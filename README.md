@@ -1,4 +1,4 @@
-# Workers Monorepo Template
+# Autofix Agent
 
 This template provides a fully featured monorepo for managing multiple Cloudflare Workers.
 
