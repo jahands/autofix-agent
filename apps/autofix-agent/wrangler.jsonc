@@ -12,5 +12,19 @@
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	},
+	"migrations": [
+		{
+			"new_sqlite_classes": ["AutofixAgent"],
+			"tag": "v1"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "AutofixAgent",
+				"name": "AutofixAgent"
+			}
+		]
 	}
 }
