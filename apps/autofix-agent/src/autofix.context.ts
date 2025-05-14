@@ -1,6 +1,6 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { AutofixAgent } from './autofix-agent.app'
+import type { AutofixAgent } from './AutofixAgent'
 
 export type Env = SharedHonoEnv & {
 	// add additional Bindings here
