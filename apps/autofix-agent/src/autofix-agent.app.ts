@@ -3,7 +3,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { useNotFound, useOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
+import type { App } from './autofix-agent.context'
 
 const app = new Hono<App>()
 	.use(
