@@ -14,4 +14,11 @@ export class AutofixAgent extends Agent<Env, State> {
 	// Built-in scheduling via this.schedule
 	// Agents support WebSockets, HTTP requests, state synchronization and
 	// can run for seconds, minutes or hours: as long as the tasks need.
+
+	/**
+	 * Start the agent
+	 */
+	async start(repo: string) {
+		this.setState({ repo })
+	}
 }
