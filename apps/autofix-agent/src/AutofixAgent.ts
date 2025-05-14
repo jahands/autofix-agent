@@ -20,5 +20,6 @@ export class AutofixAgent extends Agent<Env, State> {
 	 */
 	async start(repo: string) {
 		this.setState({ repo })
+		// TODO: Trigger logic to start the fixing process for the repo
 	}
 }
