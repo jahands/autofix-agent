@@ -8,6 +8,8 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 import type { App } from './autofix.context'
 
 export { AutofixAgent } from './AutofixAgent'
+export { ContainerManager } from './container/containerManager'
+export { UserContainer } from './container/userContainer'
 
 const app = new Hono<App>()
 	.use(
@@ -31,11 +33,11 @@ const app = new Hono<App>()
 			const { agentId } = c.req.valid('param')
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
-			await agent.start({
+			const ls = await agent.start({
 				repo: 'https://github.com/jahands/scaffold-agent',
 				branch: 'main',
 			})
-			return c.json({ agentId })
+			return c.json({ agentId, ls })
 		}
 	)
 

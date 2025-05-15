@@ -1,0 +1,42 @@
+{
+	"name": "autofix-container-server",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build:container": "docker build --platform linux/amd64 --tag autofix-container:$(git rev-parse --short HEAD) -f Dockerfile ../../ && wrangler containers push autofix-container:$(git rev-parse --short HEAD)",
+		"check:lint": "run-eslint-default",
+		"check:types": "run-tsc",
+		"deploy": "wrangler deploy",
+		"eval:ci": "start-server-and-test --expect 404 eval:server http://localhost:8976 'vitest run --testTimeout=60000 --config vitest.config.evals.ts'",
+		"eval:dev": "start-server-and-test --expect 404 eval:server http://localhost:8976 'vitest --testTimeout=60000 --config vitest.config.evals.ts'",
+		"eval:server": "concurrently \"tsx container/sandbox.container.app.ts\" \"wrangler dev --var ENVIRONMENT:test --var DEV_DISABLE_OAUTH:true --var DEV_CLOUDFLARE_EMAIL:mcp-server-eval-account@workers-for-platforms-dev.cfdata.org\"",
+		"postinstall": "mkdir -p workdir",
+		"start": "wrangler dev",
+		"start:container": "tsx container/sandbox.container.app.ts",
+		"test": "vitest",
+		"types": "wrangler types --include-env=false"
+	},
+	"dependencies": {
+		"@cloudflare/workers-oauth-provider": "0.0.5",
+		"@hono/node-server": "1.13.8",
+		"@hono/zod-validator": "0.4.3",
+		"@modelcontextprotocol/sdk": "1.10.2",
+		"agents": "0.0.87",
+		"esbuild": "0.25.4",
+		"hono": "4.7.8",
+		"mime": "4.0.6",
+		"tsx": "4.19.4",
+		"zod": "3.24.4"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.8.26",
+		"@types/mock-fs": "4.13.4",
+		"@types/node": "22.15.16",
+		"ai": "4.3.10",
+		"concurrently": "9.1.2",
+		"mock-fs": "5.5.0",
+		"start-server-and-test": "2.0.11",
+		"wrangler": "4.14.3"
+	}
+}

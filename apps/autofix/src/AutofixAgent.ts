@@ -22,5 +22,10 @@ export class AutofixAgent extends Agent<Env, State> {
 	async start({ repo, branch }: { repo: string; branch: string }) {
 		this.setState({ repo, branch })
 		// TODO: Trigger logic to start the fixing process for the repo
+		const userContainer = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		await this.env.USER_CONTAINER.get(userContainer).container_initialize(repo)
+		const ls = await this.env.USER_CONTAINER.get(userContainer).container_ls()
+		const res = await this.env.USER_CONTAINER.get(userContainer).container_ping()
+		return JSON.stringify({ ...ls, res })
 	}
 }
