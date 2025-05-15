@@ -8,8 +8,8 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 import type { App } from './autofix.context'
 
 export { AutofixAgent } from './AutofixAgent'
-export { ContainerManager } from './container/containerManager'
-export { UserContainer } from './container/userContainer'
+export { ContainerManager } from './container-server/containerManager'
+export { UserContainer } from './container-server/userContainer'
 
 const app = new Hono<App>()
 	.use(
