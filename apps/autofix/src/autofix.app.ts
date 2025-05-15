@@ -7,6 +7,8 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 
 import type { App } from './autofix.context'
 
+export { AutofixAgent } from './AutofixAgent'
+
 const app = new Hono<App>()
 	.use(
 		'*',
