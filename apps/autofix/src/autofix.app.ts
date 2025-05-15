@@ -88,7 +88,7 @@ const app = new Hono<App>()
 			model: WorkersAiModels.Llama4,
 			system: 'You are an expert at investigating Build failures in CI systems',
 			prompt: `
-				You'll find the logs for a Build below. 
+				You'll find the logs for a Build below.
 				Provide a summary of the root cause of the failure.
 
 				<logs>

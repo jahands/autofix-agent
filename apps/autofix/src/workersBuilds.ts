@@ -41,7 +41,7 @@ export class WorkersBuildsClient {
 			})
 		)
 
-		let allLines: [number, string][] = []
+		const allLines: Array<[number, string]> = []
 		let cursor: string | undefined = undefined
 		let truncated = true
 		while (truncated) {

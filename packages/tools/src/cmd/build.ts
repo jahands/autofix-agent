@@ -3,8 +3,7 @@ import { Command } from '@commander-js/extra-typings'
 import { validateArg } from '@jahands/cli-tools/args'
 import * as esbuild from 'esbuild'
 import { match } from 'ts-pattern'
-
-import { z } from '@repo/zod'
+import { z } from 'zod'
 
 import { TSHelpers } from '../tsconfig'
 
@@ -59,7 +58,7 @@ buildCmd
 	.option(
 		'--sourcemap <string>',
 		'Include sourcemaps in the output',
-		validateArg(z.union([z.enum(['both', 'linked', 'inline', 'external']), z.stringbool()])),
+		validateArg(z.union([z.enum(['both', 'linked', 'inline', 'external']), z.coerce.boolean()])),
 		'both'
 	)
 	.option(

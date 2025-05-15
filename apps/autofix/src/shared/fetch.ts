@@ -1,4 +1,4 @@
-import { ZodSchema } from 'zod'
+import type { ZodSchema } from 'zod'
 
 export const fetchOrThrowError = async (req: Request) => {
 	const resp = await fetch(req)
