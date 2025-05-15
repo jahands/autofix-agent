@@ -15,11 +15,11 @@ type WorkersBuildsConfig = {
  */
 export class WorkersBuildsClient {
 	constructor(private config: WorkersBuildsConfig) {
-		if (config.accountTag.length === 0) {
-			throw new Error('accountTag is empty')
+		if (!config.accountTag) {
+			throw new Error('accountTag is missing/empty')
 		}
-		if (config.apiToken.length === 0) {
-			throw new Error('apiToken is empty')
+		if (!config.apiToken) {
+			throw new Error('apiToken is missing/empty')
 		}
 	}
 
