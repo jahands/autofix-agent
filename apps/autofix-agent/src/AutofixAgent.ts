@@ -1,4 +1,5 @@
 import { Agent } from 'agents'
+import { match } from 'ts-pattern'
 
 import type { Env } from './autofix.context'
 
@@ -41,6 +42,60 @@ export class AutofixAgent extends Agent<Env, State> {
 		repo: '',
 		branch: '',
 		currentStep: 'idle',
+	}
+
+	// Called when a new Agent instance starts or wakes from hibernation
+	async onStart() {
+		console.log(`[AutofixAgent] onStart invoked. Current state:`, this.state)
+
+		// If the agent is already completed or in an error state, or hasn't been properly started,
+		// don't automatically resume a workflow.
+		if (
+			this.state.currentStep === 'completed' ||
+			this.state.currentStep === 'error' ||
+			this.state.currentStep === 'idle' ||
+			!this.state.repo // Check if it was ever truly started with a repo
+		) {
+			console.log(
+				`[AutofixAgent] onStart: No automatic resumption for step: ${this.state.currentStep}. Waiting for explicit start or in a terminal state.`
+			)
+			return
+		}
+
+		// Resume the state machine by calling the method for the current step.
+		// Each method is responsible for proceeding to the next step or handling errors.
+		console.log(`[AutofixAgent] onStart: Resuming from step: ${this.state.currentStep}`)
+		try {
+			await match(this.state.currentStep)
+				.with('fetching_build_info', () => this.fetchBuildInfo())
+				.with('starting_container', () => this.startContainer())
+				.with('listing_files', () => this.listFiles())
+				.with('generating_fix', () => this.generateFix())
+				.with('applying_patch', () => this.applyPatch())
+				.with('creating_branch', () => this.createAndPushBranch())
+				.with('creating_pr', () => this.createPullRequest())
+				.otherwise(() => {
+					console.log(
+						`[AutofixAgent] onStart: No specific action defined for resuming step: ${this.state.currentStep}`
+					)
+				})
+		} catch (error) {
+			// This catch is a safety net for the resumption logic itself.
+			// Individual steps have their own error handling that calls this.handleError.
+			const stepForError = this.state.currentStep || 'onStart_resume_unknown'
+			console.error(
+				`[AutofixAgent] onStart: Critical error during resumption at step ${stepForError}:`,
+				error
+			)
+			if (error instanceof Error) {
+				await this.handleError(error, stepForError)
+			} else {
+				await this.handleError(
+					new Error(`Unknown critical error during onStart resumption at step ${stepForError}`),
+					stepForError
+				)
+			}
+		}
 	}
 
 	/**
