@@ -75,12 +75,14 @@
 		"staging": {
 			"name": "autofix-container-server-staging",
 			"account_id": "6702657b6aa048cf3081ff3ff3c9c52f",
-			"routes": [{ "pattern": "autofix-container-staging.mcp.cloudflare.com", "custom_domain": true }],
+			"routes": [
+				{ "pattern": "autofix-container-staging.mcp.cloudflare.com", "custom_domain": true }
+			],
 			"containers": [
 				{
 					"name": "autofix-container-staging",
 					// UPDATE WHEN DEPLOYING A NEW IMAGE
-					"image": "registry.cloudchamber.cfdata.org/autofix-container:62ce756",
+					"image": "registry.cloudchamber.cfdata.org/autofix-container:9f88276",
 					"class_name": "UserContainer",
 					"max_instances": 3,
 					"rollout_step_percentage": 100,

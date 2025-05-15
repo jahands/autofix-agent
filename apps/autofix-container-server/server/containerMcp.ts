@@ -10,10 +10,12 @@ import type { Env } from './autofix-container-server.context'
 
 export class ContainerMcpAgent extends McpAgent<Env, never, Props> {
 	_server: CloudflareMCPServer | undefined
+	// @ts-ignore
 	set server(server: CloudflareMCPServer) {
 		this._server = server
 	}
 
+	// @ts-ignore
 	get server(): CloudflareMCPServer {
 		if (!this._server) {
 			throw new Error('Tried to access server before it was initialized')

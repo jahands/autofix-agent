@@ -6,12 +6,14 @@
 	"type": "module",
 	"scripts": {
 		"build": "run-vite-build",
+		"build:container": "docker build --platform linux/amd64 --tag autofix-container:$(git rev-parse --short HEAD) -f ./src/container/Dockerfile ../../ && wrangler containers push autofix-container:$(git rev-parse --short HEAD)",
 		"check:lint": "run-eslint-default",
 		"check:types": "run-tsc",
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
+		"start:container": "tsx container/sandbox.container.app.ts",
 		"test": "run-vitest"
 	},
 	"dependencies": {

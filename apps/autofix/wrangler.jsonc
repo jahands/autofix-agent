@@ -12,13 +12,24 @@
 		"enabled": true
 	},
 	"vars": {
-		"ENVIRONMENT": "development", // overridden during deployment
+		"ENVIRONMENT": "staging", // overridden during deployment
 		"SENTRY_RELEASE": "unknown" // overridden during deployment
 	},
 	"migrations": [
 		{
-			"new_sqlite_classes": ["AutofixAgent"],
+			"new_sqlite_classes": ["ContainerManager", "AutofixAgent", "UserContainer"],
 			"tag": "v1"
+		}
+	],
+	"containers": [
+		{
+			"name": "autofix-container-staging",
+			// UPDATE WHEN DEPLOYING A NEW IMAGE
+			"image": "registry.cloudchamber.cfdata.org/autofix-container:46582ea",
+			"class_name": "UserContainer",
+			"max_instances": 3,
+			"rollout_step_percentage": 100,
+			"instances": 3
 		}
 	],
 	"durable_objects": {
@@ -26,6 +37,14 @@
 			{
 				"class_name": "AutofixAgent",
 				"name": "AutofixAgent"
+			},
+			{
+				"class_name": "ContainerManager",
+				"name": "CONTAINER_MANAGER"
+			},
+			{
+				"class_name": "UserContainer",
+				"name": "USER_CONTAINER"
 			}
 		]
 	}
