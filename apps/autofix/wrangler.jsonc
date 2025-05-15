@@ -13,7 +13,9 @@
 	},
 	"vars": {
 		"ENVIRONMENT": "staging", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"CLOUDFLARE_ACCOUNT_TAG": "6a65f0e86fa8713e0c387f51dd44994f"
+		// CLOUDFLARE_API_TOKEN should be set as a secret
 	},
 	"migrations": [
 		{

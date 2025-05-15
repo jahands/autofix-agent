@@ -17,6 +17,8 @@ export type Env = SharedHonoEnv & {
 	DEV_CLOUDFLARE_ACCOUNT_ID: string
 	DEV_CLOUDFLARE_API_TOKEN: string
 	DEV_CLOUDFLARE_EMAIL: string
+	DEMO_CLOUDFLARE_ACCOUNT_TAG: string // demo account for grabbing build logs
+	DEMO_CLOUDFLARE_API_TOKEN: string // secret used for grabbing build logs on the demo account
 }
 
 /** Variables can be extended */
