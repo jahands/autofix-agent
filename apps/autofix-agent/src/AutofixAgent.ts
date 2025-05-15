@@ -4,6 +4,7 @@ import type { Env } from './autofix.context'
 
 type State = {
 	repo: string
+	branch: string
 }
 
 export class AutofixAgent extends Agent<Env, State> {
@@ -18,8 +19,8 @@ export class AutofixAgent extends Agent<Env, State> {
 	/**
 	 * Start the agent
 	 */
-	async start(repo: string) {
-		this.setState({ repo })
+	async start(repo: string, branch: string) {
+		this.setState({ repo, branch })
 		// TODO: Trigger logic to start the fixing process for the repo
 	}
 }
