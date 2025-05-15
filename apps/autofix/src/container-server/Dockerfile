@@ -55,7 +55,9 @@ WORKDIR /app
 COPY --from=prune /app/out/ .
 RUN pnpm install --frozen-lockfile --only=production
 
-WORKDIR /app/apps/autofix-container
+WORKDIR /app/apps/autofix
+
+RUN mkdir -p workdir
 
 # Expose the port your Node.js server will run on
 EXPOSE 8080
