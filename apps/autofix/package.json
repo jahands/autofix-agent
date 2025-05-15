@@ -1,0 +1,36 @@
+{
+	"name": "@repo/autofix",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"build": "run-vite-build",
+		"check:lint": "run-eslint-default",
+		"check:types": "run-tsc",
+		"deploy": "run-wrangler-deploy",
+		"dev": "run-vite-dev",
+		"fix:workers-types": "run-wrangler-types",
+		"preview": "run-vite-preview",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@hono/standard-validator": "0.1.2",
+		"@repo/hono-helpers": "workspace:*",
+		"agents": "0.0.87",
+		"hono": "4.7.8",
+		"workers-tagged-logger": "0.10.0",
+		"zod": "4.0.0-beta.20250430T185432"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "1.1.0",
+		"@cloudflare/vitest-pool-workers": "0.8.26",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@types/node": "22.15.16",
+		"vite": "6.3.4",
+		"vitest": "3.1.3",
+		"wrangler": "4.14.3"
+	}
+}
