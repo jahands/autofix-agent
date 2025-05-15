@@ -7,6 +7,8 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
+import { generateText } from 'ai'
+import { WorkersAiModels } from './ai-models'
 
 export { AutofixAgent } from './AutofixAgent'
 export { ContainerManager } from './container/containerManager'
@@ -61,17 +63,41 @@ const app = new Hono<App>()
 	)
 
 	// Get the logs for a build
-	.get(
-		'/api/logs/:buildUuid',
+	// this is basically only for testing that we have the demo account wired up correctly
+	// and can be removed soon
+	.get('/api/builds/:buildUuid/logs', async (c) => {
+		const workersBuilds = new WorkersBuildsClient({
+			accountTag: c.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
+			apiToken: c.env.DEMO_CLOUDFLARE_API_TOKEN,
+		})
+		const logs = await workersBuilds.getBuildLogs(c.req.param('buildUuid'))
+		return c.text(logs)
+	})
 
-		async (c) => {
-			const workersBuilds = new WorkersBuildsClient({
-				accountTag: c.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
-				apiToken: c.env.DEMO_CLOUDFLARE_API_TOKEN,
-			})
-			const logs = await workersBuilds.getBuildLogs(c.req.param('buildUuid'))
-			return c.text(logs)
-		}
-	)
+	// Analyze the logs for a build using an AI model.
+	// this is basically only for testing that we have basic AI model functionality wired up
+	// and can be removed soon
+	.get('/api/builds/:buildUuid/analyze', async (c) => {
+		const workersBuilds = new WorkersBuildsClient({
+			accountTag: c.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
+			apiToken: c.env.DEMO_CLOUDFLARE_API_TOKEN,
+		})
+		const logs = await workersBuilds.getBuildLogs(c.req.param('buildUuid'))
+
+		const modelResult = await generateText({
+			model: WorkersAiModels.Llama4,
+			system: 'You are an expert at investigating Build failures in CI systems',
+			prompt: `
+				You'll find the logs for a Build below. 
+				Provide a summary of the root cause of the failure.
+
+				<logs>
+			   	${logs}
+			   	</logs>
+			`,
+		})
+
+		return c.text(modelResult.text)
+	})
 
 export default app
