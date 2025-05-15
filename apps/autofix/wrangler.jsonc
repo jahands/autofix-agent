@@ -5,7 +5,7 @@
 	"main": "src/autofix.app.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": [{ "pattern": "autofix-staging.mcp.cloudflare.com", "custom_domain": true }],
 	"logpush": true,
 	"observability": {
 		"enabled": true
