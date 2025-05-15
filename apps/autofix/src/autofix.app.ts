@@ -25,10 +25,10 @@ const app = new Hono<App>()
 
 	// Start an agent
 	.post(
-		'/api/agents/:agentId/start',
-		sValidator('query', z.object({ agentId: z.string() })),
+		'/api/agents/:agentId',
+		sValidator('param', z.object({ agentId: z.string() })),
 		async (c) => {
-			const { agentId } = c.req.valid('query')
+			const { agentId } = c.req.valid('param')
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
 			await agent.start({
@@ -41,15 +41,15 @@ const app = new Hono<App>()
 
 	// Get the state of the agent
 	.get(
-		'/api/agents/:agentId/state',
+		'/api/agents/:agentId',
 		sValidator(
-			'query',
+			'param',
 			z.object({
 				agentId: z.string(),
 			})
 		),
 		async (c) => {
-			const { agentId } = c.req.valid('query')
+			const { agentId } = c.req.valid('param')
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
 			await using state = await agent.state
