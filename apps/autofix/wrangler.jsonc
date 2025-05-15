@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "autofix",
+	"account_id": "6702657b6aa048cf3081ff3ff3c9c52f", // Cloudflare MCP
 	"main": "src/autofix.app.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
