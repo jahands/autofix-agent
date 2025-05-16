@@ -7,7 +7,7 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
-import { generateObject, generateText, tool } from 'ai'
+import { generateObject, generateText } from 'ai'
 import { WorkersAiModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
 
