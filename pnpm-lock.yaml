@@ -77,6 +77,9 @@ importers:
       mock-fs:
         specifier: 5.5.0
         version: 5.5.0
+      ts-pattern:
+        specifier: 5.7.0
+        version: 5.7.0
       tsx:
         specifier: 4.19.4
         version: 4.19.4
