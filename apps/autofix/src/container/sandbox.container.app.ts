@@ -36,37 +36,59 @@ app.get('/ping', (c) => c.text('pong!'))
  * Gets all files in a directory
  */
 app.get('/files/ls', async (c) => {
-	const directoriesToRead = ['.']
-	const files: FileList = { resources: [] }
+	try {
+		const directoriesToRead = ['.']
+		const files: FileList = { resources: [] }
+		const baseCwd = process.cwd()
 
-	while (directoriesToRead.length > 0) {
-		const curr = directoriesToRead.pop()
-		if (!curr) {
-			throw new Error('Popped empty stack, error while listing directories')
-		}
-		const fullPath = path.join(process.cwd(), curr)
-		const dir = await fs.readdir(fullPath, { withFileTypes: true })
-		for (const dirent of dir) {
-			const relPath = path.relative(process.cwd(), `${fullPath}/${dirent.name}`)
-			if (dirent.isDirectory()) {
-				directoriesToRead.push(dirent.name)
-				files.resources.push({
-					uri: `file:///${relPath}`,
-					name: dirent.name,
-					mimeType: 'inode/directory',
-				})
-			} else {
-				const mimeType = mime.getType(dirent.name)
-				files.resources.push({
-					uri: `file:///${relPath}`,
-					name: dirent.name,
-					mimeType: mimeType ?? undefined,
-				})
+		while (directoriesToRead.length > 0) {
+			const currentRelativeDir = directoriesToRead.pop()
+			if (!currentRelativeDir) {
+				throw new Error('Popped empty stack, error while listing directories')
+			}
+
+			const absoluteDirToRead = path.join(baseCwd, currentRelativeDir)
+			let dirEntries
+			try {
+				dirEntries = await fs.readdir(absoluteDirToRead, { withFileTypes: true })
+			} catch (e: unknown) {
+				if (e instanceof Error) {
+					console.error(`Error reading directory ${absoluteDirToRead}: ${e.message}`)
+					files.resources.push({
+						uri: `file:///${currentRelativeDir}`, // list the problematic directory entry
+						name: path.basename(currentRelativeDir),
+						mimeType: 'inode/directory-error',
+					})
+				}
+				continue // If a directory is not readable, skip it
+			}
+
+			for (const dirent of dirEntries) {
+				// Path of the current entry relative to baseCwd
+				const entryRelativePath = path.join(currentRelativeDir, dirent.name)
+
+				if (dirent.isDirectory()) {
+					directoriesToRead.push(entryRelativePath)
+					files.resources.push({
+						uri: `file:///${entryRelativePath.replace(/\\/g, '/')}`, // normalize for URI
+						name: dirent.name,
+						mimeType: 'inode/directory',
+					})
+					// skip symlinks and other file types
+				} else if (dirent.isFile()) {
+					const mimeType = mime.getType(dirent.name)
+					files.resources.push({
+						uri: `file:///${entryRelativePath.replace(/\\/g, '/')}`, // normalize for URI
+						name: dirent.name,
+						mimeType: mimeType ?? undefined,
+					})
+				}
 			}
 		}
+		return c.json(files)
+	} catch (e) {
+		return c.json({ error: e }, 500)
 	}
-
-	return c.json(files)
 })
 
 /**
