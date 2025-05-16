@@ -113,7 +113,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			progress: this.state.progress,
 			errorDetails: this.state.errorDetails,
 			lastStatusUpdateTimestamp: this.state.lastStatusUpdateTimestamp,
-			message: 'AutofixAgent process initiated. Current state polling recommended.',
+			message: 'AutofixAgent started.',
 		}
 	}
 
