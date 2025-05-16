@@ -7,13 +7,13 @@ type State = {
 	branch: string
 }
 
-type AutofixStep = {
+type Step = {
 	name: string
 	description: string
 	action: string
 }
 
-const AutofixSteps = [
+const steps = [
 	{
 		name: 'Idle',
 		description: 'The agent is idle',
@@ -54,7 +54,9 @@ const AutofixSteps = [
 		description: 'The agent is done',
 		action: 'idle',
 	},
-] as const satisfies AutofixStep[]
+] as const satisfies Step[]
+
+type Action = (typeof steps)[number]['action']
 
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
