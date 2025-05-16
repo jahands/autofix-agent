@@ -5,15 +5,15 @@ import type { Env } from './autofix.context'
 type State = {
 	repo: string
 	branch: string
-	currentStep: StepName
+	currentStep: AgentStatus
 }
 
-type Step = {
+type AgentStatus = {
 	name: string
 	description: string
 }
 
-const steps = [
+const agentStatuses = [
 	{
 		name: 'idle',
 		description: 'The agent is idle',
@@ -46,9 +46,9 @@ const steps = [
 		name: 'done',
 		description: 'The agent is done',
 	},
-] as const satisfies Step[]
+] as const satisfies AgentStatus[]
 
-type StepName = (typeof steps)[number]['name']
+type AgentStatusName = (typeof agentStatuses)[number]['name']
 
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
