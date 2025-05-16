@@ -60,7 +60,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	// built-in scheduling via this.schedule
 	// agents support WebSockets, HTTP requests, state synchronization and
 	// can run for seconds, minutes or hours: as long as the tasks need.
+
+	/**
+	 * Context logger with tags added in the constructor so that we
+	 * don't have to add tags in every method that's called via RPC.
+	 */
 	logger: typeof logger
+
+	/**
+	 * Promise for the current running action. This is used
+	 * to help us detect when a running action has timed out.
+	 */
+	private activeActionPromise: Promise<void> | undefined
 
 	constructor(ctx: AgentContext, env: Env) {
 		super(ctx, env)
