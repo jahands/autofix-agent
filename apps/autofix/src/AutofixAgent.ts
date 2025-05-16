@@ -136,18 +136,25 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		// Interruption Check: Detect if DO might have restarted during an action
 		if (this.state.progress === 'running' && this.currentActionPromise === undefined) {
 			const interruptedAction = this.state.currentAction
-			const interruptionMessage = `Action '${interruptedAction}' may have been interrupted by a restart.`
-			this.logger.warn(`[AutofixAgent] Interruption detected: ${interruptionMessage}`)
+			const interruptionMessage = `Action '${interruptedAction}' may have been interrupted by a restart. Treating as a failed attempt.`
+			this.logger.warn(`[AutofixAgent] Interruption: ${interruptionMessage}`)
 
-			// Treat as a failed attempt. setActionOutcome will handle attempt counting and state.
-			// This will set progress to 'failed' and increment attempts.
-			// The rest of this onAlarm cycle (timeout check, match statement) will then act on this updated state.
-			this.setActionOutcome({ progress: 'failed', error: new Error(interruptionMessage) })
-			// Note: If this definitively fails, the match statement will transition to handle_error.
-			// If retries are left, the match statement will trigger a retry.
+			const attemptsMade = this.state.currentActionAttempts + 1
+
+			this.setState({
+				...this.state,
+				currentActionAttempts: attemptsMade,
+				progress: 'pending', // Set to pending for the match statement to handle retry
+				lastStatusUpdateTimestamp: Date.now(),
+				errorDetails: {
+					message: interruptionMessage,
+					failedAction: interruptedAction,
+				},
+			})
+			// The main match statement will now see this action as 'pending' with an incremented attempt count.
 		}
 
-		this.setNextAlarm() // Set next alarm early (moved after interruption check)
+		this.setNextAlarm() // Set next alarm early
 
 		/**
 		 * Sets the agent's current action to a new action and progress to 'running'.
@@ -180,10 +187,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		}
 
 		/**
-		 * Wraps an action handler callback, setting its state to running and managing its outcome (success/failure).
 		 * Manages currentActionPromise for interruption detection.
 		 * @param actionToRun The action being executed.
-		 * @param callback The async function representing the action's logic.
 		 */
 		const runActionHandler = async (actionToRun: AgentAction, callback: () => Promise<void>) => {
 			setRunning(actionToRun)
@@ -300,38 +305,40 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						'create_pr',
 						'finish'
 					),
-					progress: 'failed',
+					progress: P.union('failed', 'pending'), // Combined 'failed' and 'pending' states
 				},
 				async (matchedState) => {
 					if (matchedState.currentActionAttempts < MAX_ACTION_ATTEMPTS) {
 						this.logger.info(
-							`[AutofixAgent] Retrying action '${matchedState.currentAction}', upcoming attempt ${matchedState.currentActionAttempts + 1} of ${MAX_ACTION_ATTEMPTS}.`
+							`[AutofixAgent] Retrying action '${matchedState.currentAction}' (state: ${matchedState.progress}), upcoming attempt ${matchedState.currentActionAttempts + 1} of ${MAX_ACTION_ATTEMPTS}.`
 						)
 						const handler = this.getActionHandler(matchedState.currentAction)
 						if (handler) {
 							await runActionHandler(matchedState.currentAction, handler)
 						} else {
-							// This should ideally not happen if all actions are covered in getActionHandler
-							const err = new Error(
-								`Critical: No handler found for action '${matchedState.currentAction}' during retry.`
-							)
-							console.error(`[AutofixAgent] ${err.message}`)
+							const errMsg = `[AutofixAgent] Critical: No handler found for action '${matchedState.currentAction}' during retry.`
+							this.logger.error(errMsg)
 							// Force definitive failure and transition to handle_error
-							this.setActionOutcome({ progress: 'failed', error: err }) // This will max out attempts if not already
+							this.setActionOutcome({ progress: 'failed', error: new Error(errMsg) })
 							await runActionHandler('handle_error', () => this.handleError())
 						}
 					} else {
 						this.logger.info(
-							`[AutofixAgent] Action '${matchedState.currentAction}' failed after ${matchedState.currentActionAttempts} attempts. Transitioning to 'handle_error'.`
+							`[AutofixAgent] Action '${matchedState.currentAction}' (state: ${matchedState.progress}) failed after ${matchedState.currentActionAttempts} attempts. Transitioning to 'handle_error'.`
 						)
-						// errorDetails should have been set by the last setActionOutcome call.
+						// errorDetails should have been set by the last setActionOutcome call or interruption handling.
 						await runActionHandler('handle_error', () => this.handleError())
 					}
 				}
 			)
+			.with({ currentAction: 'handle_error', progress: 'pending' }, async () => {
+				this.logger.info(
+					"[AutofixAgent] 'handle_error' action was interrupted (pending). Retrying handle_error."
+				)
+				await runActionHandler('handle_error', () => this.handleError())
+			})
 			.with({ currentAction: 'handle_error', progress: 'failed' }, async (matchedState) => {
 				// This implies handleError itself failed.
-				// currentActionAttempts for handle_error isn't really tracked for retries of handleError itself.
 				console.error(
 					`[AutofixAgent] 'handle_error' action itself FAILED (attempt ${matchedState.currentActionAttempts}). Error details: ${JSON.stringify(this.state.errorDetails)}. Transitioning to 'idle' to prevent loop. Error details preserved.`
 				)
@@ -350,7 +357,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				)
 			})
 			.with(
-				{ currentAction: 'idle', progress: P.union('running', 'success', 'failed') },
+				{ currentAction: 'idle', progress: P.union('running', 'success', 'failed', 'pending') }, // Added 'pending' and 'failed'
 				async (matchedState) => {
 					console.warn(
 						`[AutofixAgent] Anomalous state: currentAction is 'idle' but progress is '${matchedState.progress}'. Resetting to idle/idle.`
@@ -374,7 +381,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				if (handler) {
 					await runActionHandler(matchedState.currentAction, handler)
 				} else {
-					console.error(
+					this.logger.error(
 						`[AutofixAgent] No handler for anomalous state action '${matchedState.currentAction}'. Transitioning to idle.`
 					)
 					this.setState({
@@ -451,6 +458,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				)
 				return true // Definitively failed
 			} else {
+				// For 'failed' state, log remaining retries.
+				// For 'pending' state (handled by interruption logic directly), this specific log might not appear from here,
+				// as 'pending' doesn't call setActionOutcome directly for the interruption event itself.
+				// However, if a retried 'pending' action then fails, this log will be relevant.
 				this.logger.info(
 					`[AutofixAgent] Action '${currentAction}' failed on attempt ${attemptsMade}. Retries remaining: ${MAX_ACTION_ATTEMPTS - attemptsMade}.`
 				)
@@ -465,30 +476,17 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	 * @returns The corresponding handler function or undefined if no handler exists.
 	 */
 	private getActionHandler(action: AgentAction): (() => Promise<void>) | undefined {
-		switch (action) {
-			case 'initialize_container':
-				return () => this.handleInitializeContainer()
-			case 'detect_issues':
-				return () => this.handleDetectIssues()
-			case 'fix_issues':
-				return () => this.handleFixIssues()
-			case 'commit_changes':
-				return () => this.handleCommitChanges()
-			case 'push_changes':
-				return () => this.handlePushChanges()
-			case 'create_pr':
-				return () => this.handleCreatePr()
-			case 'finish':
-				return () => this.handleFinish()
-			case 'handle_error': // handle_error itself is not typically retried via this mechanism.
-				return () => this.handleError()
-			case 'idle': // Idle has no handler.
-				return undefined
-			default:
-				// Ensure all actions are covered. `exhaustive matching` isn't available here.
-				console.warn(`[AutofixAgent] No handler defined for action: ${action}`)
-				return undefined
-		}
+		return match(action)
+			.with('initialize_container', () => () => this.handleInitializeContainer())
+			.with('detect_issues', () => () => this.handleDetectIssues())
+			.with('fix_issues', () => () => this.handleFixIssues())
+			.with('commit_changes', () => () => this.handleCommitChanges())
+			.with('push_changes', () => () => this.handlePushChanges())
+			.with('create_pr', () => () => this.handleCreatePr())
+			.with('finish', () => () => this.handleFinish())
+			.with('handle_error', () => () => this.handleError())
+			.with('idle', () => undefined) // Idle has no handler function
+			.exhaustive()
 	}
 
 	// =========================== //
@@ -559,6 +557,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		// Future: Implement more specific error handling, notifications, or even specific cleanup actions.
 		// For example, if errorDetails.failedAction was 'push_changes', try to delete remote branch.
-		await new Promise((resolve) => setTimeout(resolve, 50)) // Simulate some brief work
+		await new Promise((resolve) => setTimeout(resolve, ms('0.05 seconds'))) // Simulate some brief work
 	}
 }
