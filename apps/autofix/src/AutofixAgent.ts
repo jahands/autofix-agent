@@ -1,5 +1,5 @@
 import { Agent } from 'agents'
-import { ms } from 'itty-time'
+import { datePlus, ms } from 'itty-time'
 import { match, P } from 'ts-pattern'
 import { z } from 'zod'
 
@@ -101,10 +101,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			lastStatusUpdateTimestamp: Date.now(),
 		})
 
-		// Asynchronously kick off the first action processing.
-		// The client that called start() gets an immediate response from the return value below.
-		this.ctx.waitUntil(this.processNextAction())
-
+		// Start the agent via alarms.
+		this.setNextAlarm(datePlus('1 second'))
 		// Return value for the Hono app's POST /api/agents/:agentId endpoint
 		return {
 			repo: this.state.repo,
@@ -115,6 +113,21 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			lastStatusUpdateTimestamp: this.state.lastStatusUpdateTimestamp,
 			message: 'AutofixAgent started.',
 		}
+	}
+
+	private setNextAlarm(nextAlarm?: Date) {
+		const nextAlarmDate = nextAlarm ?? datePlus('5 seconds')
+		void this.ctx.storage.setAlarm(nextAlarmDate)
+		console.log(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
+	}
+
+	override async onAlarm(): Promise<void> {
+		console.log('[AutofixAgent] Alarm triggered.')
+		// only one alarm can run at a time, so it's
+		// fine if the next action takes > 5 seconds
+		this.setNextAlarm()
+
+		await this.processNextAction()
 	}
 
 	public async processNextAction(): Promise<void> {
