@@ -23,6 +23,7 @@ const AgentActions = [
 	},
 	{ name: 'create_pr', description: 'Create a pull request for the fix.' },
 	{ name: 'finish', description: 'Agent has completed its task cycle.' },
+	{ name: 'handle_error', description: 'An error occurred and is being handled.' }, // Renamed from 'error'
 ] as const satisfies Array<{
 	name: string
 	description: string
@@ -40,6 +41,7 @@ type AgentState = {
 	branch: string
 	currentActionStage: AgentAction // The current lifecycle stage
 	progress: ProgressStatus // The progress of that stage
+	errorDetails?: { message: string; failedStage: AgentAction } // Optional error context
 }
 
 // Map for determining the next action when the current action/stage is successfully completed
@@ -51,6 +53,7 @@ const nextStageOnSuccessMap: Partial<Record<AgentAction, AgentAction>> = {
 	push_changes: 'create_pr',
 	create_pr: 'finish',
 	finish: 'idle', // After 'finish' successfully completes, the agent becomes 'idle'
+	handle_error: 'idle', // Renamed from 'error'
 }
 
 function getNextAction(currentStage: AgentAction, progress: ProgressStatus): AgentAction {
@@ -60,6 +63,10 @@ function getNextAction(currentStage: AgentAction, progress: ProgressStatus): Age
 
 	if (progress === 'success') {
 		return nextStageOnSuccessMap[currentStage] || 'idle' // Go to next defined stage, or idle if at the end or undefined
+	}
+
+	if (progress === 'failed') {
+		return 'handle_error' // Renamed from 'error'
 	}
 
 	// If in-progress, pending, or failed, the agent should not start a new action automatically.
@@ -81,7 +88,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	async start({ repo, branch }: { repo: string; branch: string }) {
 		console.log(`Agent starting for repo: ${repo}, branch: ${branch}`)
-		this.setState({ repo, branch, currentActionStage: 'idle', progress: 'idle' })
+		this.setState({
+			repo,
+			branch,
+			currentActionStage: 'idle',
+			progress: 'idle',
+			errorDetails: undefined,
+		})
 
 		// Asynchronously kick off the first action processing.
 		// The client that called start() gets an immediate response from the return value below.
@@ -93,6 +106,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			branch: this.state.branch,
 			currentActionStage: this.state.currentActionStage,
 			progress: this.state.progress,
+			errorDetails: this.state.errorDetails,
 			message: 'AutofixAgent process initiated. Current state polling recommended.',
 		}
 	}
@@ -112,8 +126,22 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			)
 			// If we just successfully completed the 'finish' stage, transition the overall agent state to idle.
 			if (state.currentActionStage === 'finish' && state.progress === 'success') {
-				this.setState({ ...state, currentActionStage: 'idle', progress: 'idle' })
-				console.log('[AutofixAgent] Process finished. Agent is now truly idle.')
+				this.setState({
+					...state,
+					currentActionStage: 'idle',
+					progress: 'idle',
+					errorDetails: undefined,
+				})
+				console.log('[AutofixAgent] Process finished successfully. Agent is now truly idle.')
+			} else if (state.currentActionStage === 'handle_error' && state.progress === 'success') {
+				// This means handleError ran successfully, and getNextAction for (handle_error, success) returned idle.
+				this.setState({
+					...state,
+					currentActionStage: 'idle',
+					progress: 'idle',
+					errorDetails: undefined,
+				})
+				console.log('[AutofixAgent] Error handled. Agent is now idle.')
 			}
 			return
 		}
@@ -123,6 +151,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			...state,
 			currentActionStage: actionToExecute,
 			progress: 'in-progress',
+			// errorDetails are preserved if the actionToExecute is 'handle_error', cleared otherwise by some handlers
 		})
 
 		console.log(
@@ -142,17 +171,19 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				.with('push_changes', async () => this.handlePushChanges())
 				.with('create_pr', async () => this.handleCreatePr())
 				.with('finish', async () => this.handleFinish())
+				.with('handle_error', async () => this.handleError()) // Renamed from 'error'
 				.with('idle', async () => {
 					// Should ideally not be dispatched, but handle defensively
 					console.warn(
 						"[AutofixAgent] dispatchActionHandler called with 'idle'. Setting to idle progress."
 					)
 					if (this.state.currentActionStage === 'idle' && this.state.progress !== 'idle') {
-						this.setState({ ...this.state, progress: 'idle' })
+						this.setState({ ...this.state, progress: 'idle', errorDetails: undefined })
 					}
 				})
 				.exhaustive() // Ensures all actions are handled
 		} catch (err) {
+			const errorMessage = err instanceof Error ? err.message : 'Unknown error'
 			console.error(`[AutofixAgent] Error executing action/stage ${action}:`, err)
 			const currentState = this.state || {
 				repo: '',
@@ -160,7 +191,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				currentActionStage: action,
 				progress: 'idle',
 			}
-			this.setState({ ...currentState, progress: 'failed' }) // currentActionStage remains the one that failed
+			this.setState({
+				...currentState,
+				progress: 'failed',
+				errorDetails: { message: errorMessage, failedStage: currentState.currentActionStage },
+			})
 			this.ctx.waitUntil(this.processNextAction()) // See if 'failed' state leads to 'idle' next action
 		}
 	}
@@ -175,11 +210,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		try {
 			console.log(`[AutofixAgent] Mock: Initializing container for repo: ${repo}`)
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, progress: 'success' })
+			this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
 			console.log('[AutofixAgent] Container initialized, progress set to success.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to initialize container:', e)
-			this.setState({ ...this.state, progress: 'failed' })
+			this.setState({
+				...this.state,
+				progress: 'failed',
+				errorDetails: {
+					message: e instanceof Error ? e.message : 'Unknown initialization error',
+					failedStage: 'initialize_container',
+				},
+			})
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -189,11 +231,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		try {
 			console.log('[AutofixAgent] Mock: Detecting issues...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, progress: 'success' })
+			this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
 			console.log('[AutofixAgent] Issue detection complete, progress set to success.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to detect issues:', e)
-			this.setState({ ...this.state, progress: 'failed' })
+			this.setState({
+				...this.state,
+				progress: 'failed',
+				errorDetails: {
+					message: e instanceof Error ? e.message : 'Unknown issue detection error',
+					failedStage: 'detect_issues',
+				},
+			})
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -203,11 +252,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		try {
 			console.log('[AutofixAgent] Mock: Fixing issues...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, progress: 'success' })
+			this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
 			console.log('[AutofixAgent] Issue fixing complete, progress set to success.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to fix issues:', e)
-			this.setState({ ...this.state, progress: 'failed' })
+			this.setState({
+				...this.state,
+				progress: 'failed',
+				errorDetails: {
+					message: e instanceof Error ? e.message : 'Unknown issue fixing error',
+					failedStage: 'fix_issues',
+				},
+			})
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -217,11 +273,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		try {
 			console.log('[AutofixAgent] Mock: Committing changes...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, progress: 'success' })
+			this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
 			console.log('[AutofixAgent] Changes committed, progress set to success.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to commit changes:', e)
-			this.setState({ ...this.state, progress: 'failed' })
+			this.setState({
+				...this.state,
+				progress: 'failed',
+				errorDetails: {
+					message: e instanceof Error ? e.message : 'Unknown commit error',
+					failedStage: 'commit_changes',
+				},
+			})
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -231,11 +294,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		try {
 			console.log('[AutofixAgent] Mock: Pushing changes...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, progress: 'success' })
+			this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
 			console.log('[AutofixAgent] Changes pushed, progress set to success.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to push changes:', e)
-			this.setState({ ...this.state, progress: 'failed' })
+			this.setState({
+				...this.state,
+				progress: 'failed',
+				errorDetails: {
+					message: e instanceof Error ? e.message : 'Unknown push error',
+					failedStage: 'push_changes',
+				},
+			})
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -245,11 +315,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		try {
 			console.log('[AutofixAgent] Mock: Creating PR...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, progress: 'success' })
+			this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
 			console.log('[AutofixAgent] PR created, progress set to success.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to create PR:', e)
-			this.setState({ ...this.state, progress: 'failed' })
+			this.setState({
+				...this.state,
+				progress: 'failed',
+				errorDetails: {
+					message: e instanceof Error ? e.message : 'Unknown PR creation error',
+					failedStage: 'create_pr',
+				},
+			})
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -258,7 +335,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		console.log('[AutofixAgent] Executing: handleFinish. Agent process cycle completed.')
 		// This stage mainly signifies the end of a full pass.
 		// Setting progress to 'success' will allow getNextAction to transition to 'idle'.
-		this.setState({ ...this.state, progress: 'success' })
+		this.setState({ ...this.state, progress: 'success', errorDetails: undefined })
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleError(): Promise<void> {
+		console.warn(
+			`[AutofixAgent] Handling error. Details: ${JSON.stringify(this.state.errorDetails)}`
+		)
+		// For now, handling an error means acknowledging it and setting progress to success,
+		// which will transition the agent to idle via getNextAction('handle_error', 'success').
+		// Future: Implement retry logic, specific error handling, or notifications here.
+		this.setState({ ...this.state, progress: 'success' }) // errorDetails will be cleared by processNextAction when transitioning to idle
 		this.ctx.waitUntil(this.processNextAction())
 	}
 }
