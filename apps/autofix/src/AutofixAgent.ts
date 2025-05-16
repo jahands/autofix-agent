@@ -74,6 +74,17 @@ const nextActionMap: Record<AgentStatus, AgentAction> = {
 	pr_creating: 'idle',
 }
 
+const actionToInProgressStatusMap: Record<Exclude<AgentAction, 'idle'>, AgentStatus> = {
+	initialize_container: 'container_initializing',
+	check_container: 'container_check_running',
+	detect_issues: 'issue_detection_running',
+	fix_issues: 'issue_fixing_running',
+	commit_changes: 'changes_committing',
+	push_changes: 'changes_pushing',
+	create_pr: 'pr_creating',
+	finish: 'done', // 'finish' action leads to 'done' status directly
+}
+
 function getNextAction(currentStatus: AgentStatus): AgentAction {
 	return nextActionMap[currentStatus]
 }
@@ -127,17 +138,8 @@ export class AutofixAgent extends Agent<Env, State> {
 			return
 		}
 
-		const newStatusWhileExecuting = match(actionToExecute)
-			.returnType<AgentStatus>()
-			.with('initialize_container', () => 'container_initializing')
-			.with('check_container', () => 'container_check_running')
-			.with('detect_issues', () => 'issue_detection_running')
-			.with('fix_issues', () => 'issue_fixing_running')
-			.with('commit_changes', () => 'changes_committing')
-			.with('push_changes', () => 'changes_pushing')
-			.with('create_pr', () => 'pr_creating')
-			.with('finish', () => 'done')
-			.exhaustive()
+		const newStatusWhileExecuting =
+			actionToInProgressStatusMap[actionToExecute as Exclude<AgentAction, 'idle'>]
 
 		this.setState({
 			...state,
