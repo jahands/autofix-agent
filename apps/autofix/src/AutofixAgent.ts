@@ -91,7 +91,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	 * Start the agent
 	 */
 	async start({ repo, branch }: { repo: string; branch: string }) {
-		console.log(`Agent starting for repo: ${repo}, branch: ${branch}`)
+		console.log(`[AutofixAgent] Starting for repo: ${repo}, branch: ${branch}`)
 		this.setState({
 			repo,
 			branch,
