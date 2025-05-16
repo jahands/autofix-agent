@@ -175,11 +175,10 @@ export class AutofixAgent extends Agent<Env, State> {
 				.with('push_changes', async () => this.handlePushChanges())
 				.with('create_pr', async () => this.handleCreatePr())
 				.with('finish', async () => this.handleFinish())
-				.with('idle', () => {
+				.with('idle', async () => {
 					console.warn(
 						"[AutofixAgent] dispatchActionHandler called with 'idle'. This should not happen."
 					)
-					return Promise.resolve() // ts-pattern match needs all handlers to return same type (Promise<void>)
 				})
 				.exhaustive() // Ensures all actions are handled
 		} catch (error) {
