@@ -161,7 +161,20 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			)
 		}
 
-		// state machine powered by ts-pattern
+		const runActionHandler = async (action: AgentAction, callback: () => Promise<void>) => {
+			setRunning(action)
+			this.logger.info(
+				`[AutofixAgent] Transitioning to action: '${action}', progress: 'running'. Handler will be invoked.`
+			)
+			try {
+				await callback()
+				this.setActionOutcome({ progress: 'success' })
+			} catch (e) {
+				this.setActionOutcome({ progress: 'failed', error: e })
+			}
+		}
+
+		// state machine
 		await match({ currentAction: state.currentAction, progress: state.progress })
 			.returnType<Promise<void>>() // all branches will execute async logic or be async
 			// initial kick-off from idle
