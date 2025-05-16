@@ -9,7 +9,7 @@ import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WithLogTags } from 'workers-tagged-logger'
 
-// Define the main actions/stages of the agent
+// define the main actions/stages of the agent
 const AgentActions = [
 	{ name: 'idle', description: 'Agent is idle, awaiting or finished.' },
 	{ name: 'initialize_container', description: 'Initialize the container for the repository.' },
@@ -28,7 +28,7 @@ const AgentActions = [
 	},
 	{ name: 'create_pr', description: 'Create a pull request for the fix.' },
 	{ name: 'finish', description: 'Agent has completed its task cycle.' },
-	{ name: 'handle_error', description: 'An error occurred and is being handled.' }, // Renamed from 'error'
+	{ name: 'handle_error', description: 'An error occurred and is being handled.' }, // renamed from 'error'
 ] as const satisfies Array<{
 	name: string
 	description: string
@@ -46,19 +46,19 @@ const TIMEOUT_DURATION_MS = ms('10 minutes')
 type AgentState = {
 	repo: string
 	branch: string
-	currentAction: AgentAction // The current lifecycle stage
-	progress: ProgressStatus // The progress of that stage
-	lastStatusUpdateTimestamp: number // Timestamp of the last stage/progress change
-	errorDetails?: { message: string; failedAction: AgentAction } // Optional error context
+	currentAction: AgentAction // the current lifecycle stage
+	progress: ProgressStatus // the progress of that stage
+	lastStatusUpdateTimestamp: number // timestamp of the last stage/progress change
+	errorDetails?: { message: string; failedAction: AgentAction } // optional error context
 }
 
 export class AutofixAgent extends Agent<Env, AgentState> {
-	// Define methods on the Agent:
+	// define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
 	//
-	// Every Agent has built in state via this.setState and this.sql
-	// Built-in scheduling via this.schedule
-	// Agents support WebSockets, HTTP requests, state synchronization and
+	// every Agent has built in state via this.setState and this.sql
+	// built-in scheduling via this.schedule
+	// agents support WebSockets, HTTP requests, state synchronization and
 	// can run for seconds, minutes or hours: as long as the tasks need.
 	logger: typeof logger
 
@@ -91,7 +91,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			lastStatusUpdateTimestamp: Date.now(),
 		})
 
-		// Start the agent via alarms.
+		// start the agent via alarms.
 		this.setNextAlarm(datePlus('1 second'))
 
 		return {
@@ -114,7 +114,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
 	override async onAlarm(): Promise<void> {
 		this.logger.info('[AutofixAgent] Alarm triggered.')
-		this.setNextAlarm() // Set next alarm early
+		this.setNextAlarm() // set next alarm early
 
 		// grab a copy of state before we make any mutations
 		const state = structuredClone(this.state)
@@ -125,11 +125,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			if (duration > TIMEOUT_DURATION_MS) {
 				const timeoutMessage = `Action '${state.currentAction}' timed out after ${Math.round(duration / 1000)}s.`
 				console.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
-				// Mark the timed-out action as failed
+				// mark the timed-out action as failed
 				this.setActionOutcome({ progress: 'failed', error: new Error(timeoutMessage) })
 
-				// Update state to immediately run handle_error for the timeout
-				// It's important to get the latest state via this.state after setActionOutcome
+				// update state to immediately run handle_error for the timeout
+				// it's important to get the latest state via this.state after setActionOutcome
 				this.setState({
 					...this.state,
 					currentAction: 'handle_error',
@@ -140,13 +140,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				this.logger.info(
 					`[AutofixAgent] Transitioning to action: 'handle_error' due to timeout. Dispatching handler.`
 				)
-				await this.handleError() // Directly call handleError
-				return // End processing for this alarm cycle
+				await this.handleError() // directly call handleError
+				return // end processing for this alarm cycle
 			}
 		}
 
 		const setRunning = (newAction: AgentAction): void => {
-			// It's crucial to use the current `this.state` here, not a potentially stale clone from onAlarm's start,
+			// it's crucial to use the current `this.state` here, not a potentially stale clone from onAlarm's start,
 			// especially if errorDetails were set by a timeout or a previous failing action before this transition occurs.
 			const currentState = this.state
 			this.setState({
@@ -163,7 +163,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		// state machine powered by ts-pattern
 		await match({ currentAction: state.currentAction, progress: state.progress })
-			.returnType<Promise<void>>() // All branches will execute async logic or be async
+			.returnType<Promise<void>>() // all branches will execute async logic or be async
 			// initial kick-off from idle
 			.with({ currentAction: 'idle', progress: 'idle' }, async () => {
 				const nextAction: AgentAction = 'initialize_container'
@@ -205,7 +205,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					...this.state,
 					currentAction: 'idle',
 					progress: 'idle',
-					errorDetails: undefined, // Clear error details on successful finish
+					errorDetails: undefined, // clear error details on successful finish
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
@@ -218,7 +218,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					...this.state,
 					currentAction: 'idle',
 					progress: 'idle',
-					errorDetails: undefined, // Clear error details after successful error handling
+					errorDetails: undefined, // clear error details after successful error handling
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
@@ -305,7 +305,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			const error = options.error
 			const errorMessage =
 				error instanceof Error ? error.message : 'Unknown error during action execution'
-			const failedAction = this.state?.currentAction || 'unknown' // Fallback if state is somehow not set
+			const failedAction = this.state?.currentAction || 'unknown' // fallback if state is somehow not set
 
 			console.error(
 				`[AutofixAgent] Action '${failedAction}' failed. Error: ${errorMessage}`,
@@ -320,7 +320,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	// --- Action Handlers ---
-	// Each handler now sets progress to 'success' or 'failed'.
+	// each handler now sets progress to 'success' or 'failed'.
 	// 'currentAction' is already set by processNextAction before these are called.
 
 	private async handleInitializeContainer(): Promise<void> {
@@ -398,8 +398,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 	private async handleFinish(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleFinish. Agent process cycle completed.')
-		// This stage mainly signifies the end of a full pass.
-		// Setting progress to 'success' will allow getNextAction to transition to 'idle'.
+		// this stage mainly signifies the end of a full pass.
+		// setting progress to 'success' will allow the agent to transition to 'idle'.
 		this.setActionOutcome({ progress: 'success' })
 	}
 
@@ -407,9 +407,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		console.warn(
 			`[AutofixAgent] Handling error. Details: ${JSON.stringify(this.state.errorDetails)}`
 		)
-		// For now, handling an error means acknowledging it and setting progress to success,
-		// which will transition the agent to idle via getNextAction('handle_error', 'success').
-		// Future: Implement retry logic, specific error handling, or notifications here.
-		this.setActionOutcome({ progress: 'success' }) // errorDetails will be cleared by processNextAction when transitioning to idle
+		// for now, handling an error means acknowledging it and setting progress to success,
+		// which will transition the agent to idle.
+		// future: Implement retry logic, specific error handling, or notifications here.
+		this.setActionOutcome({ progress: 'success' }) // errorDetails will be cleared when transitioning to idle via the main match statement
 	}
 }
