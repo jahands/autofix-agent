@@ -179,7 +179,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		// state machine
+		// The core state machine: evaluates the current action and its progress (from the cloned state)
+		// to determine and execute the next step in the agent's lifecycle.
+		// Active transitions typically use `runActionHandler` to execute the next action's logic,
+		// while terminal states (like 'finish' succeeding or 'handle_error' succeeding) directly set the agent to idle.
 		await match({ currentAction: state.currentAction, progress: state.progress })
 			.returnType<Promise<void>>() // all branches will execute async logic or be async
 			// initial kick-off from idle
