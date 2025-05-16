@@ -47,6 +47,7 @@ type AgentState = {
 	repo: string
 	branch: string
 	currentAction: AgentAction // the current lifecycle stage
+	currentActionAttempts: number // number of attempts to run the current action
 	progress: ProgressStatus // the progress of that stage
 	lastStatusUpdateTimestamp: number // timestamp of the last stage/progress change
 	errorDetails?: { message: string; failedAction: AgentAction } // optional error context
@@ -71,7 +72,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	 * Promise for the current running action. This is used
 	 * to help us detect when a running action has timed out.
 	 */
-	private activeActionPromise: Promise<void> | undefined
+	private currentActionPromise: Promise<void> | undefined
 
 	constructor(ctx: AgentContext, env: Env) {
 		super(ctx, env)
@@ -97,6 +98,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			repo,
 			branch,
 			currentAction: 'idle',
+			currentActionAttempts: 0,
 			progress: 'idle',
 			errorDetails: undefined,
 			lastStatusUpdateTimestamp: Date.now(),
