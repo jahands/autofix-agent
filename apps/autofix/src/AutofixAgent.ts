@@ -48,7 +48,13 @@ type AgentState = {
 	errorDetails?: { message: string; failedAction: AgentAction } // Optional error context
 }
 
-function getNextAction(currentAction: AgentAction, progress: ProgressStatus): AgentAction {
+function getNextAction({
+	currentAction,
+	progress,
+}: {
+	currentAction: AgentAction
+	progress: ProgressStatus
+}): AgentAction {
 	return (
 		match({ currentAction, progress })
 			.returnType<AgentAction>()
@@ -153,7 +159,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		const actionToExecute = getNextAction(state.currentAction, state.progress)
+		const actionToExecute = getNextAction({
+			currentAction: state.currentAction,
+			progress: state.progress,
+		})
 
 		await match(actionToExecute)
 			.with('idle', async () => {
