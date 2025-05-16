@@ -42,6 +42,7 @@ const ProgressStatus = z.enum(['idle', 'running', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
 const TIMEOUT_DURATION_MS = ms('10 minutes')
+const MAX_ACTION_ATTEMPTS = 3
 
 type AgentState = {
 	repo: string
