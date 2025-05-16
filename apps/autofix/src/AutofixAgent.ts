@@ -131,11 +131,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	public async processNextAction(): Promise<void> {
-		const state = this.state // Access in-memory state, kept in sync by Agent SDK
-		if (!state) {
-			console.error('[AutofixAgent] Agent state is not available in processNextAction.')
-			return
-		}
+		const state = this.state
 
 		// Timeout check
 		if (state.progress === 'running') {
