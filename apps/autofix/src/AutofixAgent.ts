@@ -80,7 +80,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	 * Start the agent
 	 */
 	@WithLogTags({ source: 'AutofixAgent', handler: 'start' })
-	async start({ repo, branch }: { repo: string; branch: string }) {
+	public async start({ repo, branch }: { repo: string; branch: string }) {
 		this.logger.info(`[AutofixAgent] Starting for repo: ${repo}, branch: ${branch}`)
 		this.setState({
 			repo,
