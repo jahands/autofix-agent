@@ -9,7 +9,6 @@ import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
 import { generateObject, generateText, tool } from 'ai'
 import { WorkersAiModels } from './ai-models'
-import { GitHubClient } from './github'
 import { Octokit } from '@octokit/rest'
 
 export { AutofixAgent } from './AutofixAgent'
