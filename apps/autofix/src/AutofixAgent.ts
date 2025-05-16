@@ -146,8 +146,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					progress: 'running', // The handle_error action is now running
 					lastStatusUpdateTimestamp: Date.now(),
 				})
+
+				// Dispatch the handle_error action instead of using getNextAction
 				await this.dispatchActionHandler('handle_error')
-				return // Stop further processing in this cycle
+				return
 			}
 		}
 
