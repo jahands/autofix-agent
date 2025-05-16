@@ -13,7 +13,9 @@
 	},
 	"vars": {
 		"ENVIRONMENT": "staging", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"DEMO_CLOUDFLARE_ACCOUNT_TAG": "2cd7119dd8f3534cd99dcded06048a62" // Jacob's test account
+		// DEMO_CLOUDFLARE_API_TOKEN should be set as a secret
 	},
 	"migrations": [
 		{
@@ -21,6 +23,9 @@
 			"tag": "v1"
 		}
 	],
+	"ai": {
+		"binding": "AI"
+	},
 	"containers": [
 		{
 			"name": "autofix-container-staging",

@@ -30,18 +30,6 @@ const config = {
 			// snapTo removes it from syncpack update list, which is the main goal
 			snapTo: ['@repo/eslint-config'],
 		},
-		{
-			label: 'use zod v4 in packages/tools',
-			dependencies: ['zod'],
-			pinVersion: '4.0.0-beta.20250430T185432',
-			packages: ['@repo/zod'],
-		},
-		{
-			label: 'use zod v3 in apps/autofix-container-server',
-			dependencies: ['zod'],
-			pinVersion: '3.24.4',
-			packages: ['autofix-container-server'],
-		},
 	],
 	semverGroups: [
 		{
