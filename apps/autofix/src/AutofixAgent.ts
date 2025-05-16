@@ -24,7 +24,8 @@ const AgentActions = [
 	},
 	{ name: 'create_pr', description: 'Create a pull request for the fix.' },
 	{ name: 'finish', description: 'Agent has completed its task cycle.' },
-	{ name: 'handle_error', description: 'An error occurred and is being handled.' }, // Renamed from 'error'
+	{ name: 'handle_error', description: 'An error occurred and is being handled.' },
+	{ name: 'handle_timeout', description: 'The action timed out.' },
 ] as const satisfies Array<{
 	name: string
 	description: string
@@ -51,13 +52,24 @@ type AgentState = {
 function getNextAction({
 	currentAction,
 	progress,
+	lastStatusUpdateTimestamp,
 }: {
 	currentAction: AgentAction
 	progress: ProgressStatus
+	lastStatusUpdateTimestamp: number
 }): AgentAction {
 	return (
-		match({ currentAction, progress })
+		match({ currentAction, progress, lastStatusUpdateTimestamp })
 			.returnType<AgentAction>()
+			// Timeout check
+			.with(
+				{
+					progress: 'running',
+					lastStatusUpdateTimestamp: P.when((ts) => Date.now() - ts > TIMEOUT_DURATION_MS),
+				},
+				() => 'handle_timeout'
+			)
+
 			// Initial kick-off
 			.with({ currentAction: 'idle', progress: 'idle' }, () => 'initialize_container')
 
@@ -162,6 +174,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		const actionToExecute = getNextAction({
 			currentAction: state.currentAction,
 			progress: state.progress,
+			lastStatusUpdateTimestamp: state.lastStatusUpdateTimestamp,
 		})
 
 		await match(actionToExecute)
