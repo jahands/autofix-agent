@@ -5,7 +5,7 @@ import type { Env } from './autofix.context'
 type State = {
 	repo: string
 	branch: string
-	currentStep: AgentStatus
+	status: AgentStatus
 }
 
 const AgentStatuses = [
@@ -61,7 +61,7 @@ export class AutofixAgent extends Agent<Env, State> {
 	 * Start the agent
 	 */
 	async start({ repo, branch }: { repo: string; branch: string }) {
-		this.setState({ repo, branch, currentStep: 'idle' })
+		this.setState({ repo, branch, status: 'idle' })
 		// TODO: Trigger logic to start the fixing process for the repo
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
