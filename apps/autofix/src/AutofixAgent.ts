@@ -5,58 +5,50 @@ import type { Env } from './autofix.context'
 type State = {
 	repo: string
 	branch: string
+	currentStep: StepName
 }
 
 type Step = {
 	name: string
 	description: string
-	action: string
 }
 
 const steps = [
 	{
-		name: 'Idle',
+		name: 'idle',
 		description: 'The agent is idle',
-		action: 'idle',
 	},
 	{
-		name: 'Initialize container',
+		name: 'container_initialize',
 		description: 'Initialize the container',
-		action: 'container_initialize',
 	},
 	{
-		name: 'Check container',
+		name: 'container_check',
 		description: 'Check the container',
-		action: 'container_check',
 	},
 	{
-		name: 'Detect issues',
+		name: 'detect_issues',
 		description: 'Detect issues in the project',
-		action: 'detect',
 	},
 	{
-		name: 'Fix issues',
+		name: 'fix_issues',
 		description: 'Fix the issues in the project',
-		action: 'fix',
 	},
 	{
-		name: 'Commit changes',
+		name: 'commit_changes',
 		description: 'Commit the changes to the project',
-		action: 'commit',
 	},
 	{
-		name: 'Push',
+		name: 'push_changes',
 		description: 'Push the changes to the project',
-		action: 'push',
 	},
 	{
-		name: 'Done',
+		name: 'done',
 		description: 'The agent is done',
-		action: 'idle',
 	},
 ] as const satisfies Step[]
 
-type Action = (typeof steps)[number]['action']
+type StepName = (typeof steps)[number]['name']
 
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
@@ -71,7 +63,7 @@ export class AutofixAgent extends Agent<Env, State> {
 	 * Start the agent
 	 */
 	async start({ repo, branch }: { repo: string; branch: string }) {
-		this.setState({ repo, branch })
+		this.setState({ repo, branch, currentStep: 'idle' })
 		// TODO: Trigger logic to start the fixing process for the repo
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
