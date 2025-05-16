@@ -38,7 +38,7 @@ const AgentAction = z.enum(AgentActions.map((a) => a.name))
 type AgentAction = z.infer<typeof AgentAction>
 
 // progress status for an action/stage
-const ProgressStatus = z.enum(['idle', 'running', 'success', 'failed'])
+const ProgressStatus = z.enum(['idle', 'pending', 'running', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
 const TIMEOUT_DURATION_MS = ms('10 minutes')
