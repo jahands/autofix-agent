@@ -120,9 +120,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info('[AutofixAgent] Alarm triggered.')
 		this.setNextAlarm() // set next alarm early
 
-		// grab a copy of state before we make any mutations
-		const state = structuredClone(this.state)
-
 		/**
 		 * Sets the agent's current action to a new action and progress to 'running'.
 		 * Preserves existing errorDetails.
@@ -162,28 +159,29 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		// Timeout check for actions that are 'running' so
 		// that we don't get stuck in a loop indefinitely.
-		if (state.progress === 'running') {
-			const duration = Date.now() - state.lastStatusUpdateTimestamp
+		if (this.state.progress === 'running') {
+			const duration = Date.now() - this.state.lastStatusUpdateTimestamp
 			if (duration > TIMEOUT_DURATION_MS) {
-				const timeoutMessage = `Action '${state.currentAction}' timed out after ${Math.round(duration / 1000)}s.`
+				const currentActionThatTimedOut = this.state.currentAction
+				const timeoutMessage = `Action '${currentActionThatTimedOut}' timed out after ${Math.round(duration / 1000)}s.`
 				console.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
 				// mark the timed-out action as failed. this.state will be updated by setActionOutcome.
 				this.setActionOutcome({ progress: 'failed', error: new Error(timeoutMessage) })
 
 				// No need to explicitly set state to run handle_error here, runActionHandler will do it.
 				this.logger.info(
-					`[AutofixAgent] Action '${state.currentAction}' timed out. Transitioning to 'handle_error'.`
+					`[AutofixAgent] Action '${currentActionThatTimedOut}' timed out. Transitioning to 'handle_error'.`
 				)
 				await runActionHandler('handle_error', () => this.handleError())
 				return // end processing for this alarm cycle
 			}
 		}
 
-		// The core state machine: evaluates the current action and its progress (from the cloned state)
+		// The core state machine: evaluates the current action and its progress (from the live this.state)
 		// to determine and execute the next step in the agent's lifecycle.
 		// Active transitions typically use `runActionHandler` to execute the next action's logic,
 		// while terminal states (like 'finish' succeeding or 'handle_error' succeeding) directly set the agent to idle.
-		await match({ currentAction: state.currentAction, progress: state.progress })
+		await match({ currentAction: this.state.currentAction, progress: this.state.progress })
 			.returnType<Promise<void>>() // all branches will execute async logic or be async
 			// initial kick-off from idle
 			.with({ currentAction: 'idle', progress: 'idle' }, async () => {
