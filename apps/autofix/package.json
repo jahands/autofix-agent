@@ -23,6 +23,7 @@
 		"@repo/hono-helpers": "workspace:*",
 		"agents": "0.0.87",
 		"hono": "4.7.8",
+		"itty-time": "2.0.1",
 		"mime": "4.0.7",
 		"mock-fs": "5.5.0",
 		"ts-pattern": "5.7.0",

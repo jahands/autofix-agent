@@ -1,4 +1,5 @@
 import { Agent } from 'agents'
+import { ms } from 'itty-time'
 import { match, P } from 'ts-pattern'
 import { z } from 'zod'
 
@@ -36,7 +37,7 @@ type AgentAction = z.infer<typeof AgentAction>
 const ProgressStatus = z.enum(['idle', 'pending', 'in-progress', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
-const TIMEOUT_DURATION_MS = 10 * 60 * 1000 // 10 minutes
+const TIMEOUT_DURATION_MS = ms('10 minutes')
 
 type AgentState = {
 	repo: string
