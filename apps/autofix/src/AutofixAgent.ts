@@ -319,7 +319,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		}
 	}
 
-	// --- Action Handlers ---
+	// =========================== //
+	// ===== Action Handlers ===== //
+	// =========================== //
 	// each handler now sets progress to 'success' or 'failed'.
 	// 'currentAction' is already set by processNextAction before these are called.
 
