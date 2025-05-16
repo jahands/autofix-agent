@@ -34,7 +34,7 @@ const AgentAction = z.enum(AgentActions.map((a) => a.name))
 type AgentAction = z.infer<typeof AgentAction>
 
 // progress status for an action/stage
-const ProgressStatus = z.enum(['idle', 'pending', 'running', 'success', 'failed'])
+const ProgressStatus = z.enum(['idle', 'running', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
 const TIMEOUT_DURATION_MS = ms('10 minutes')
@@ -240,14 +240,14 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
-			// Default case: current action is 'running', 'pending', or an unhandled idle combination.
+			// Default case: current action is 'running' or an unhandled idle combination.
 			// This means no state transition in this cycle, agent waits.
 			.otherwise(async () => {
 				console.log(
 					`[AutofixAgent] No state transition for current action '${state.currentAction}' with progress '${state.progress}'. Agent waits.`
 				)
 				// If truly idle (e.g. idle/idle, which should have been caught by the first .with clause)
-				// or if a state like (running/pending) persists, we might update timestamp to prevent premature timeout detection
+				// or if a state like 'running' persists, we might update timestamp to prevent premature timeout detection
 				// if an action is genuinely long-running and setNextAlarm is very short.
 				// However, lastStatusUpdateTimestamp is primarily for tracking start of current action's 'running' state.
 				// If we are in 'idle'/'idle' and nothing happened, it implies the first rule was missed, which is an error.
