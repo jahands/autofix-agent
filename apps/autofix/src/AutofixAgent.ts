@@ -28,15 +28,14 @@ const AgentActions = [
 	description: string
 }>
 
-const AgentActionSchema = z.enum(AgentActions.map((a) => a.name))
-type AgentAction = z.infer<typeof AgentActionSchema>
+const AgentAction = z.enum(AgentActions.map((a) => a.name))
+type AgentAction = z.infer<typeof AgentAction>
 
-// Define the progress status for an action/stage
-const ProgressStatusSchema = z.enum(['idle', 'pending', 'in-progress', 'success', 'failed'])
-type ProgressStatus = z.infer<typeof ProgressStatusSchema>
+// progress status for an action/stage
+const ProgressStatus = z.enum(['idle', 'pending', 'in-progress', 'success', 'failed'])
+type ProgressStatus = z.infer<typeof ProgressStatus>
 
-// Define the agent's state
-type State = {
+type AgentState = {
 	repo: string
 	branch: string
 	currentActionStage: AgentAction // The current lifecycle stage
@@ -68,7 +67,7 @@ function getNextAction(currentStage: AgentAction, progress: ProgressStatus): Age
 	return 'idle'
 }
 
-export class AutofixAgent extends Agent<Env, State> {
+export class AutofixAgent extends Agent<Env, AgentState> {
 	// Define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
 	//
