@@ -161,10 +161,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			)
 		}
 
-		// Main state machine logic using ts-pattern
+		// state machine powered by ts-pattern
 		await match({ currentAction: state.currentAction, progress: state.progress })
 			.returnType<Promise<void>>() // All branches will execute async logic or be async
-			// Initial kick-off from idle
+			// initial kick-off from idle
 			.with({ currentAction: 'idle', progress: 'idle' }, async () => {
 				const nextAction: AgentAction = 'initialize_container'
 				setRunning(nextAction)
@@ -173,7 +173,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				)
 				await this.handleInitializeContainer()
 			})
-			// Successful stage transitions - each will set state and call the next handler
+			// successful stage transitions - each will set state and call the next handler
 			.with({ currentAction: 'initialize_container', progress: 'success' }, async () => {
 				setRunning('detect_issues')
 				await this.handleDetectIssues()
@@ -198,7 +198,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				setRunning('finish')
 				await this.handleFinish()
 			})
-			// Transitions to idle state (no further handler call within this cycle)
+			// transitions to idle state (no further work to do)
 			.with({ currentAction: 'finish', progress: 'success' }, async () => {
 				this.logger.info("[AutofixAgent] 'finish' action successful. Transitioning to 'idle'.")
 				this.setState({
@@ -209,7 +209,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
-			// ADD BACK: Handler for successful handle_error completion
+			// set to idle after handling errors
 			.with({ currentAction: 'handle_error', progress: 'success' }, async () => {
 				this.logger.info(
 					"[AutofixAgent] 'handle_error' action successful. Transitioning to 'idle'."
