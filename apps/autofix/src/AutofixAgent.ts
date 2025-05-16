@@ -95,7 +95,7 @@ export class AutofixAgent extends Agent<Env, State> {
 		console.log(`Agent starting for repo: ${repo}, branch: ${branch}`)
 		// Initialize state. The state is persisted via this.setState().
 		// The durable object itself has this.id for its own ID.
-		await this.setState({ repo, branch, action: 'idle', currentStatus: 'idle' })
+		this.setState({ repo, branch, action: 'idle', currentStatus: 'idle' })
 
 		// Asynchronously kick off the first action processing.
 		// The client that called start() gets an immediate response from the return value below.
@@ -140,7 +140,7 @@ export class AutofixAgent extends Agent<Env, State> {
 			.with('finish', () => 'done')
 			.exhaustive()
 
-		await this.setState({
+		this.setState({
 			...state,
 			action: actionToExecute,
 			currentStatus: newStatusWhileExecuting,
@@ -175,7 +175,7 @@ export class AutofixAgent extends Agent<Env, State> {
 			console.error(`[AutofixAgent] Error executing action ${action}:`, error)
 			// Ensure state is available before trying to spread it
 			const currentState = this.state || { repo: '', branch: '' }
-			await this.setState({ ...currentState, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...currentState, currentStatus: 'error', action: 'idle' })
 			// Call processNextAction to allow the system to potentially recover or go to idle based on 'error' status.
 			this.ctx.waitUntil(this.processNextAction())
 		}
@@ -195,11 +195,11 @@ export class AutofixAgent extends Agent<Env, State> {
 			// await userContainer.container_initialize(repo); // Actual logic
 			await new Promise((resolve) => setTimeout(resolve, 500)) // Simulate async work
 
-			await this.setState({ ...this.state, currentStatus: 'container_ready' })
+			this.setState({ ...this.state, currentStatus: 'container_ready' })
 			console.log('[AutofixAgent] Container initialized, status set to container_ready.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to initialize container:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -209,11 +209,11 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			console.log('[AutofixAgent] Mock: Checking container...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			await this.setState({ ...this.state, currentStatus: 'container_check_complete' })
+			this.setState({ ...this.state, currentStatus: 'container_check_complete' })
 			console.log('[AutofixAgent] Container check complete.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to check container:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -223,11 +223,11 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			console.log('[AutofixAgent] Mock: Detecting issues...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			await this.setState({ ...this.state, currentStatus: 'issue_detection_complete' })
+			this.setState({ ...this.state, currentStatus: 'issue_detection_complete' })
 			console.log('[AutofixAgent] Issue detection complete.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to detect issues:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -237,11 +237,11 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			console.log('[AutofixAgent] Mock: Fixing issues...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			await this.setState({ ...this.state, currentStatus: 'issue_fixing_complete' })
+			this.setState({ ...this.state, currentStatus: 'issue_fixing_complete' })
 			console.log('[AutofixAgent] Issue fixing complete.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to fix issues:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -251,11 +251,11 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			console.log('[AutofixAgent] Mock: Committing changes...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			await this.setState({ ...this.state, currentStatus: 'changes_committed' })
+			this.setState({ ...this.state, currentStatus: 'changes_committed' })
 			console.log('[AutofixAgent] Changes committed.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to commit changes:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -265,11 +265,11 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			console.log('[AutofixAgent] Mock: Pushing changes...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			await this.setState({ ...this.state, currentStatus: 'changes_pushed' })
+			this.setState({ ...this.state, currentStatus: 'changes_pushed' })
 			console.log('[AutofixAgent] Changes pushed.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to push changes:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
@@ -279,11 +279,11 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			console.log('[AutofixAgent] Mock: Creating PR...')
 			await new Promise((resolve) => setTimeout(resolve, 500))
-			await this.setState({ ...this.state, currentStatus: 'pr_created' })
+			this.setState({ ...this.state, currentStatus: 'pr_created' })
 			console.log('[AutofixAgent] PR created.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to create PR:', e)
-			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
 	}
