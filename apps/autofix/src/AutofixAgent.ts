@@ -14,7 +14,6 @@ type State = {
 const AgentActions = [
 	{ name: 'idle', description: 'No current action.' },
 	{ name: 'initialize_container', description: 'Start the process of initializing the container.' },
-	{ name: 'check_container', description: 'Start the process of checking the container.' },
 	{ name: 'detect_issues', description: 'Start the process of detecting issues.' },
 	{ name: 'fix_issues', description: 'Start the process of fixing issues.' },
 	{ name: 'commit_changes', description: 'Start the process of committing changes.' },
@@ -34,9 +33,7 @@ type AgentAction = z.infer<typeof AgentActionSchema>
 const AgentStatuses = [
 	{ name: 'idle', description: 'The agent is idle, awaiting an action.' },
 	{ name: 'container_initializing', description: 'Container is currently being initialized.' },
-	{ name: 'container_ready', description: 'Container is initialized and ready.' },
-	{ name: 'container_check_running', description: 'Running checks on the container.' },
-	{ name: 'container_check_complete', description: 'Container checks are complete.' },
+	{ name: 'container_ready', description: 'Container is initialized and ready (checks passed).' },
 	{ name: 'issue_detection_running', description: 'Detecting issues in the project.' },
 	{ name: 'issue_detection_complete', description: 'Issue detection is complete.' },
 	{ name: 'issue_fixing_running', description: 'Fixing issues in the project.' },
@@ -62,8 +59,7 @@ type AgentStatus = z.infer<typeof AgentStatusSchema>
 const nextActionMap: Record<AgentStatus, AgentAction> = {
 	// for idle/complete statuses, the agent is ready to start the next action
 	idle: 'initialize_container',
-	container_ready: 'check_container',
-	container_check_complete: 'detect_issues',
+	container_ready: 'detect_issues',
 	issue_detection_complete: 'fix_issues',
 	issue_fixing_complete: 'commit_changes',
 	changes_committed: 'push_changes',
@@ -73,7 +69,6 @@ const nextActionMap: Record<AgentStatus, AgentAction> = {
 	error: 'idle',
 	// for in-progress statuses, the agent is busy. The next action to initiate is idle.
 	container_initializing: 'idle',
-	container_check_running: 'idle',
 	issue_detection_running: 'idle',
 	issue_fixing_running: 'idle',
 	changes_committing: 'idle',
@@ -87,7 +82,6 @@ function getNextAction(currentStatus: AgentStatus): AgentAction {
 
 const actionToInProgressStatusMap: Record<Exclude<AgentAction, 'idle'>, AgentStatus> = {
 	initialize_container: 'container_initializing',
-	check_container: 'container_check_running',
 	detect_issues: 'issue_detection_running',
 	fix_issues: 'issue_fixing_running',
 	commit_changes: 'changes_committing',
@@ -168,7 +162,6 @@ export class AutofixAgent extends Agent<Env, State> {
 		try {
 			await match(action)
 				.with('initialize_container', async () => this.handleInitializeContainer())
-				.with('check_container', async () => this.handleCheckContainer())
 				.with('detect_issues', async () => this.handleDetectIssues())
 				.with('fix_issues', async () => this.handleFixIssues())
 				.with('commit_changes', async () => this.handleCommitChanges())
@@ -209,20 +202,6 @@ export class AutofixAgent extends Agent<Env, State> {
 			console.log('[AutofixAgent] Container initialized, status set to container_ready.')
 		} catch (e) {
 			console.error('[AutofixAgent] Failed to initialize container:', e)
-			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
-		}
-		this.ctx.waitUntil(this.processNextAction())
-	}
-
-	private async handleCheckContainer(): Promise<void> {
-		console.log('[AutofixAgent] Executing: handleCheckContainer')
-		try {
-			console.log('[AutofixAgent] Mock: Checking container...')
-			await new Promise((resolve) => setTimeout(resolve, 500))
-			this.setState({ ...this.state, currentStatus: 'container_check_complete' })
-			console.log('[AutofixAgent] Container check complete.')
-		} catch (e) {
-			console.error('[AutofixAgent] Failed to check container:', e)
 			this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
 		}
 		this.ctx.waitUntil(this.processNextAction())
