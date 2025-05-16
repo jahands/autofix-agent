@@ -8,12 +8,7 @@ type State = {
 	currentStep: AgentStatus
 }
 
-type AgentStatus = {
-	name: string
-	description: string
-}
-
-const agentStatuses = [
+const AgentStatuses = [
 	{
 		name: 'idle',
 		description: 'The agent is idle',
@@ -46,9 +41,12 @@ const agentStatuses = [
 		name: 'done',
 		description: 'The agent is done',
 	},
-] as const satisfies AgentStatus[]
+] as const satisfies Array<{
+	name: string
+	description: string
+}>
 
-type AgentStatusName = (typeof agentStatuses)[number]['name']
+type AgentStatus = (typeof AgentStatuses)[number]['name']
 
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
