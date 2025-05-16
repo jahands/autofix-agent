@@ -1,6 +1,6 @@
 ---
 description:
-globs:
+globs: AutofixAgent.ts
 alwaysApply: false
 ---
 # AutofixAgent Architecture Overview
