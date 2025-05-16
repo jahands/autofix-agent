@@ -56,6 +56,7 @@ function getNextAction(currentStatus: AgentStatus): AgentAction {
 	return (
 		match(currentStatus)
 			.returnType<AgentAction>()
+			// for idle/complete statuses, the agent is ready to start the next action
 			.with('idle', () => 'initialize_container')
 			.with('container_ready', () => 'check_container')
 			.with('container_check_complete', () => 'detect_issues')
@@ -66,7 +67,7 @@ function getNextAction(currentStatus: AgentStatus): AgentAction {
 			.with('pr_created', () => 'finish')
 			.with('done', () => 'idle')
 			.with('error', () => 'idle')
-			// For "in-progress" statuses, the agent is busy. The "next action" to initiate is 'idle'.
+			// for in-progress statuses, the agent is busy. The next action to initiate is idle.
 			.with('container_initializing', () => 'idle')
 			.with('container_check_running', () => 'idle')
 			.with('issue_detection_running', () => 'idle')
