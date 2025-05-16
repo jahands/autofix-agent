@@ -103,7 +103,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		// Start the agent via alarms.
 		this.setNextAlarm(datePlus('1 second'))
-		// Return value for the Hono app's POST /api/agents/:agentId endpoint
+
 		return {
 			repo: this.state.repo,
 			branch: this.state.branch,
