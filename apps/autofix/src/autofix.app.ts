@@ -8,7 +8,6 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 import type { App } from './autofix.context'
 
 export { AutofixAgent } from './AutofixAgent'
-export { ContainerManager } from './container-server/containerManager'
 export { UserContainer } from './container-server/userContainer'
 
 const app = new Hono<App>()
@@ -34,10 +33,36 @@ const app = new Hono<App>()
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
 			const ls = await agent.start({
-				repo: 'https://github.com/jahands/scaffold-agent',
+				repo: 'https://github.com/jahands/autofix-agent.git',
 				branch: 'main',
 			})
 			return c.json({ agentId, ls })
+		}
+	)
+
+	// Heartbeat the agent
+	.post(
+		'/api/agents/:agentId/ping',
+		sValidator('param', z.object({ agentId: z.string() })),
+		async (c) => {
+			const { agentId } = c.req.valid('param')
+			const id = c.env.AutofixAgent.idFromName(agentId)
+			const agent = c.env.AutofixAgent.get(id)
+			const res = await agent.pingContainer()
+			return c.json(res)
+		}
+	)
+
+	// List files
+	.get(
+		'/api/agents/:agentId/files',
+		sValidator('param', z.object({ agentId: z.string() })),
+		async (c) => {
+			const { agentId } = c.req.valid('param')
+			const id = c.env.AutofixAgent.idFromName(agentId)
+			const agent = c.env.AutofixAgent.get(id)
+			const res = await agent.listContainerFiles()
+			return c.json(res)
 		}
 	)
 

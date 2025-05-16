@@ -17,7 +17,7 @@
 	},
 	"migrations": [
 		{
-			"new_sqlite_classes": ["ContainerManager", "AutofixAgent", "UserContainer"],
+			"new_sqlite_classes": ["AutofixAgent", "UserContainer"],
 			"tag": "v1"
 		}
 	],
@@ -25,7 +25,7 @@
 		{
 			"name": "autofix-container-staging",
 			// UPDATE WHEN DEPLOYING A NEW IMAGE
-			"image": "registry.cloudchamber.cfdata.org/autofix-container:4cf913e",
+			"image": "registry.cloudchamber.cfdata.org/autofix-container:df96f52",
 			"class_name": "UserContainer",
 			"max_instances": 3,
 			"rollout_step_percentage": 100,
@@ -37,10 +37,6 @@
 			{
 				"class_name": "AutofixAgent",
 				"name": "AutofixAgent"
-			},
-			{
-				"class_name": "ContainerManager",
-				"name": "CONTAINER_MANAGER"
 			},
 			{
 				"class_name": "UserContainer",

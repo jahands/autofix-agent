@@ -1,8 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
-import { MAX_CONTAINERS, proxyFetch, startAndWaitForPort } from './containerHelpers'
-import { getContainerManager } from './containerManager'
+import { proxyFetch, startAndWaitForPort } from './containerHelpers'
 import { fileToBase64 } from './utils'
 
 import type { Env } from '../autofix.context'
@@ -21,33 +20,9 @@ export class UserContainer extends DurableObject<Env> {
 		await this.ctx.container?.destroy()
 	}
 
-	async killContainer(): Promise<void> {
-		console.log('Reaping container')
-		const containerManager = getContainerManager(this.env)
-		const active = await containerManager.listActive()
-		if (this.ctx.id.toString() in active) {
-			console.log('killing container')
-			await this.destroyContainer()
-			await containerManager.killContainer(this.ctx.id.toString())
-		}
-	}
-
 	async container_initialize(gitURL: string): Promise<string> {
 		// kill container
-		await this.killContainer()
-
-		// try to cleanup cleanup old containers
-		const containerManager = getContainerManager(this.env)
-
-		// if more than half of our containers are being used, let's try reaping
-		if ((await containerManager.listActive()).length >= MAX_CONTAINERS / 2) {
-			await containerManager.tryKillOldContainers()
-			if ((await containerManager.listActive()).length >= MAX_CONTAINERS) {
-				throw new Error(
-					`Unable to reap enough containers. There are ${MAX_CONTAINERS} active container sandboxes, please wait`
-				)
-			}
-		}
+		await this.destroyContainer()
 
 		// start container
 		let startedContainer = false
@@ -62,9 +37,6 @@ export class UserContainer extends DurableObject<Env> {
 		if (!startedContainer) {
 			throw new Error('Failed to start container')
 		}
-
-		// track and manage lifecycle
-		await containerManager.trackContainer(this.ctx.id.toString())
 
 		return `Created new container`
 	}
