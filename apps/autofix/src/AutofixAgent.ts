@@ -124,18 +124,29 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
+		const setRunning = (newAction: AgentAction): void => {
+			// It's crucial to use the current `this.state` here, not a potentially stale clone from onAlarm's start,
+			// especially if errorDetails were set by a timeout or a previous failing action before this transition occurs.
+			const currentState = this.state
+			this.setState({
+				...currentState,
+				currentAction: newAction,
+				progress: 'running',
+				lastStatusUpdateTimestamp: Date.now(),
+				// errorDetails from currentState are preserved if they were set (e.g. by timeout or a failed setActionOutcome for a *previous* action)
+			})
+			console.log(
+				`[AutofixAgent] Transitioning to action: '${newAction}', progress: 'running'. Handler will be invoked.`
+			)
+		}
+
 		// Main state machine logic using ts-pattern
 		await match(state)
 			.returnType<Promise<void>>() // All branches will execute async logic or be async
 			// Initial kick-off from idle
 			.with({ currentAction: 'idle', progress: 'idle' }, async () => {
 				const nextAction: AgentAction = 'initialize_container'
-				this.setState({
-					...this.state, // Use this.state to get latest after potential prior modifications in same cycle (e.g. timeout)
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(
 					`[AutofixAgent] Transitioning from 'idle' to action: '${nextAction}'. Dispatching handler.`
 				)
@@ -144,67 +155,37 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			// Successful stage transitions - each will set state and call the next handler
 			.with({ currentAction: 'initialize_container', progress: 'success' }, async () => {
 				const nextAction: AgentAction = 'detect_issues'
-				this.setState({
-					...this.state,
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
 				await this.handleDetectIssues()
 			})
 			.with({ currentAction: 'detect_issues', progress: 'success' }, async () => {
 				const nextAction: AgentAction = 'fix_issues'
-				this.setState({
-					...this.state,
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
 				await this.handleFixIssues()
 			})
 			.with({ currentAction: 'fix_issues', progress: 'success' }, async () => {
 				const nextAction: AgentAction = 'commit_changes'
-				this.setState({
-					...this.state,
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
 				await this.handleCommitChanges()
 			})
 			.with({ currentAction: 'commit_changes', progress: 'success' }, async () => {
 				const nextAction: AgentAction = 'push_changes'
-				this.setState({
-					...this.state,
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
 				await this.handlePushChanges()
 			})
 			.with({ currentAction: 'push_changes', progress: 'success' }, async () => {
 				const nextAction: AgentAction = 'create_pr'
-				this.setState({
-					...this.state,
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
 				await this.handleCreatePr()
 			})
 			.with({ currentAction: 'create_pr', progress: 'success' }, async () => {
 				const nextAction: AgentAction = 'finish'
-				this.setState({
-					...this.state,
-					currentAction: nextAction,
-					progress: 'running',
-					lastStatusUpdateTimestamp: Date.now(),
-				})
+				setRunning(nextAction)
 				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
 				await this.handleFinish()
 			})
