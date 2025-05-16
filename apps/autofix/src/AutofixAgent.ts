@@ -20,14 +20,39 @@ const AutofixSteps = [
 		action: 'idle',
 	},
 	{
-		name: 'Initialize',
+		name: 'Initialize container',
 		description: 'Initialize the container',
 		action: 'container_initialize',
 	},
 	{
-		name: 'Check',
+		name: 'Check container',
 		description: 'Check the container',
 		action: 'container_check',
+	},
+	{
+		name: 'Detect issues',
+		description: 'Detect issues in the project',
+		action: 'detect',
+	},
+	{
+		name: 'Fix issues',
+		description: 'Fix the issues in the project',
+		action: 'fix',
+	},
+	{
+		name: 'Commit changes',
+		description: 'Commit the changes to the project',
+		action: 'commit',
+	},
+	{
+		name: 'Push',
+		description: 'Push the changes to the project',
+		action: 'push',
+	},
+	{
+		name: 'Done',
+		description: 'The agent is done',
+		action: 'idle',
 	},
 ] as const satisfies AutofixStep[]
 
