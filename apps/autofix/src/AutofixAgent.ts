@@ -133,10 +133,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		// fine if the next action takes > 5 seconds
 		this.setNextAlarm()
 
-		await this.processNextAction()
-	}
-
-	public async processNextAction(): Promise<void> {
 		const state = this.state
 
 		// Timeout check
@@ -164,74 +160,40 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			progress: state.progress,
 		})
 
-		await match(actionToExecute)
-			.with('idle', async () => {
-				console.log(
-					`[AutofixAgent] Current action '${state.currentAction}' with progress '${state.progress}' results in 'idle' next action. No new action initiated.`
-				)
-				// Ensure timestamp is updated if we are settling into idle from a completed stage
-				if (
-					(state.currentAction === 'finish' || state.currentAction === 'handle_error') &&
-					state.progress === 'success'
-				) {
-					this.setState({
-						...state,
-						currentAction: 'idle',
-						progress: 'idle',
-						errorDetails: undefined,
-						lastStatusUpdateTimestamp: Date.now(),
-					})
-					console.log(
-						'[AutofixAgent] Process cycle ended (finish/error handled). Agent is now truly idle.'
-					)
-				}
-				// If actionToExecute is 'idle', we simply do nothing further in this processing cycle.
-			})
-			.otherwise(async (newActionToDispatch) => {
+		if (actionToExecute === 'idle') {
+			console.log(
+				`[AutofixAgent] Current action '${state.currentAction}' with progress '${state.progress}' results in 'idle' next action. No new action initiated.`
+			)
+			// Ensure timestamp is updated if we are settling into idle from a completed stage
+			if (
+				(state.currentAction === 'finish' || state.currentAction === 'handle_error') &&
+				state.progress === 'success'
+			) {
 				this.setState({
 					...state,
-					currentAction: newActionToDispatch,
-					progress: 'running',
+					currentAction: 'idle',
+					progress: 'idle',
+					errorDetails: undefined,
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 				console.log(
-					`[AutofixAgent] Transitioning to action: '${newActionToDispatch}', progress: 'running'. Dispatching handler.`
+					'[AutofixAgent] Process cycle ended (finish/error handled). Agent is now truly idle.'
 				)
-				await this.dispatchActionHandler(newActionToDispatch)
-			})
-	}
+			}
+			// If actionToExecute is 'idle', we simply do nothing further in this processing cycle.
+			return
+		}
 
-	private setActionOutcome(
-		options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }
-	): void {
-		const baseUpdate: Partial<AgentState> = {
+		this.setState({
+			...state,
+			currentAction: actionToExecute,
+			progress: 'running',
 			lastStatusUpdateTimestamp: Date.now(),
-			progress: options.progress,
-		}
-
-		if (options.progress === 'success') {
-			this.setState({
-				...this.state,
-				...baseUpdate,
-				errorDetails: undefined,
-			})
-		} else {
-			// 'failed'
-			const error = options.error
-			const errorMessage =
-				error instanceof Error ? error.message : 'Unknown error during action execution'
-			const failedAction = this.state?.currentAction || 'unknown' // Fallback if state is somehow not set
-
-			console.error(
-				`[AutofixAgent] Action '${failedAction}' failed. Error: ${errorMessage}`,
-				error instanceof Error ? error : undefined
-			)
-			this.setState({
-				...this.state,
-				...baseUpdate,
-				errorDetails: { message: errorMessage, failedAction },
-			})
-		}
+		})
+		console.log(
+			`[AutofixAgent] Transitioning to action: '${actionToExecute}', progress: 'running'. Dispatching handler.`
+		)
+		await this.dispatchActionHandler(actionToExecute)
 	}
 
 	private async dispatchActionHandler(action: AgentAction): Promise<void> {
@@ -264,6 +226,39 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				.exhaustive()
 		} catch (err) {
 			this.setActionOutcome({ progress: 'failed', error: err })
+		}
+	}
+
+	private setActionOutcome(
+		options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }
+	): void {
+		const baseUpdate: Partial<AgentState> = {
+			lastStatusUpdateTimestamp: Date.now(),
+			progress: options.progress,
+		}
+
+		if (options.progress === 'success') {
+			this.setState({
+				...this.state,
+				...baseUpdate,
+				errorDetails: undefined,
+			})
+		} else {
+			// 'failed'
+			const error = options.error
+			const errorMessage =
+				error instanceof Error ? error.message : 'Unknown error during action execution'
+			const failedAction = this.state?.currentAction || 'unknown' // Fallback if state is somehow not set
+
+			console.error(
+				`[AutofixAgent] Action '${failedAction}' failed. Error: ${errorMessage}`,
+				error instanceof Error ? error : undefined
+			)
+			this.setState({
+				...this.state,
+				...baseUpdate,
+				errorDetails: { message: errorMessage, failedAction },
+			})
 		}
 	}
 
