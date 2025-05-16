@@ -48,6 +48,36 @@ type AgentState = {
 	errorDetails?: { message: string; failedAction: AgentAction } // Optional error context
 }
 
+function getNextAction(currentAction: AgentAction, progress: ProgressStatus): AgentAction {
+	return (
+		match({ currentAction, progress })
+			.returnType<AgentAction>()
+			// Initial kick-off
+			.with({ currentAction: 'idle', progress: 'idle' }, () => 'initialize_container')
+
+			// Successful stage transitions
+			.with({ currentAction: 'initialize_container', progress: 'success' }, () => 'detect_issues')
+			.with({ currentAction: 'detect_issues', progress: 'success' }, () => 'fix_issues')
+			.with({ currentAction: 'fix_issues', progress: 'success' }, () => 'commit_changes')
+			.with({ currentAction: 'commit_changes', progress: 'success' }, () => 'push_changes')
+			.with({ currentAction: 'push_changes', progress: 'success' }, () => 'create_pr')
+			.with({ currentAction: 'create_pr', progress: 'success' }, () => 'finish')
+			.with({ currentAction: 'finish', progress: 'success' }, () => 'idle')
+			.with({ currentAction: 'handle_error', progress: 'success' }, () => 'idle')
+
+			// If any stage fails, transition to handle_error
+			.when(
+				(state) => state.progress === 'failed',
+				() => 'handle_error'
+			)
+
+			// Default case for any other combination (e.g., running, pending,
+			// or 'idle' stage with 'success'/'failed' progress if not caught above, though 'failed' is).
+			// These should result in an 'idle' action, meaning the agent waits.
+			.otherwise(() => 'idle')
+	)
+}
+
 export class AutofixAgent extends Agent<Env, AgentState> {
 	// Define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
@@ -56,36 +86,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	// Built-in scheduling via this.schedule
 	// Agents support WebSockets, HTTP requests, state synchronization and
 	// can run for seconds, minutes or hours: as long as the tasks need.
-
-	private getNextAction(currentAction: AgentAction, progress: ProgressStatus): AgentAction {
-		return (
-			match({ currentAction, progress })
-				.returnType<AgentAction>()
-				// Initial kick-off
-				.with({ currentAction: 'idle', progress: 'idle' }, () => 'initialize_container')
-
-				// Successful stage transitions
-				.with({ currentAction: 'initialize_container', progress: 'success' }, () => 'detect_issues')
-				.with({ currentAction: 'detect_issues', progress: 'success' }, () => 'fix_issues')
-				.with({ currentAction: 'fix_issues', progress: 'success' }, () => 'commit_changes')
-				.with({ currentAction: 'commit_changes', progress: 'success' }, () => 'push_changes')
-				.with({ currentAction: 'push_changes', progress: 'success' }, () => 'create_pr')
-				.with({ currentAction: 'create_pr', progress: 'success' }, () => 'finish')
-				.with({ currentAction: 'finish', progress: 'success' }, () => 'idle')
-				.with({ currentAction: 'handle_error', progress: 'success' }, () => 'idle')
-
-				// If any stage fails, transition to handle_error
-				.when(
-					(state) => state.progress === 'failed',
-					() => 'handle_error'
-				)
-
-				// Default case for any other combination (e.g., running, pending,
-				// or 'idle' stage with 'success'/'failed' progress if not caught above, though 'failed' is).
-				// These should result in an 'idle' action, meaning the agent waits.
-				.otherwise(() => 'idle')
-		)
-	}
 
 	/**
 	 * Start the agent
@@ -153,7 +153,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		const actionToExecute = this.getNextAction(state.currentAction, state.progress)
+		const actionToExecute = getNextAction(state.currentAction, state.progress)
 
 		await match(actionToExecute)
 			.with('idle', async () => {
