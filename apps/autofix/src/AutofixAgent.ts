@@ -245,29 +245,57 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			currentActionAttempts: this.state.currentActionAttempts, // include for match
 		})
 			.returnType<Promise<void>>()
-			// initial kick-off from idle
-			.with({ currentAction: 'idle', progress: 'idle' }, async () => {
-				await runActionHandler('initialize_container', () => this.handleInitializeContainer())
-			})
-			// successful stage transitions - each will set state and call the next handler
-			.with({ currentAction: 'initialize_container', progress: 'success' }, async () => {
-				await runActionHandler('detect_issues', () => this.handleDetectIssues())
-			})
-			.with({ currentAction: 'detect_issues', progress: 'success' }, async () => {
-				await runActionHandler('fix_issues', () => this.handleFixIssues())
-			})
-			.with({ currentAction: 'fix_issues', progress: 'success' }, async () => {
-				await runActionHandler('commit_changes', () => this.handleCommitChanges())
-			})
-			.with({ currentAction: 'commit_changes', progress: 'success' }, async () => {
-				await runActionHandler('push_changes', () => this.handlePushChanges())
-			})
-			.with({ currentAction: 'push_changes', progress: 'success' }, async () => {
-				await runActionHandler('create_pr', () => this.handleCreatePr())
-			})
-			.with({ currentAction: 'create_pr', progress: 'success' }, async () => {
-				await runActionHandler('finish', () => this.handleFinish())
-			})
+			// initial kick-off from idle or if initialize_container is pending
+			.with(
+				{ currentAction: 'idle', progress: 'idle' },
+				{ currentAction: 'initialize_container', progress: 'pending' },
+				async () => {
+					await runActionHandler('initialize_container', () => this.handleInitializeContainer())
+				}
+			)
+			// successful stage transitions OR current stage is pending (interrupted)
+			.with(
+				{ currentAction: 'initialize_container', progress: 'success' },
+				{ currentAction: 'detect_issues', progress: 'pending' },
+				async () => {
+					await runActionHandler('detect_issues', () => this.handleDetectIssues())
+				}
+			)
+			.with(
+				{ currentAction: 'detect_issues', progress: 'success' },
+				{ currentAction: 'fix_issues', progress: 'pending' },
+				async () => {
+					await runActionHandler('fix_issues', () => this.handleFixIssues())
+				}
+			)
+			.with(
+				{ currentAction: 'fix_issues', progress: 'success' },
+				{ currentAction: 'commit_changes', progress: 'pending' },
+				async () => {
+					await runActionHandler('commit_changes', () => this.handleCommitChanges())
+				}
+			)
+			.with(
+				{ currentAction: 'commit_changes', progress: 'success' },
+				{ currentAction: 'push_changes', progress: 'pending' },
+				async () => {
+					await runActionHandler('push_changes', () => this.handlePushChanges())
+				}
+			)
+			.with(
+				{ currentAction: 'push_changes', progress: 'success' },
+				{ currentAction: 'create_pr', progress: 'pending' },
+				async () => {
+					await runActionHandler('create_pr', () => this.handleCreatePr())
+				}
+			)
+			.with(
+				{ currentAction: 'create_pr', progress: 'success' },
+				{ currentAction: 'finish', progress: 'pending' },
+				async () => {
+					await runActionHandler('finish', () => this.handleFinish())
+				}
+			)
 			// transitions to idle state (no further work to do)
 			.with({ currentAction: 'finish', progress: 'success' }, async () => {
 				this.logger.info("[AutofixAgent] 'finish' action successful. Transitioning to 'idle'.")
@@ -305,7 +333,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						'create_pr',
 						'finish'
 					),
-					progress: P.union('failed', 'pending'), // Combined 'failed' and 'pending' states
+					progress: 'failed', // Only handle 'failed' here; 'pending' is handled by specific transitions above
 				},
 				async ({ currentAction, currentActionAttempts, progress }) => {
 					if (currentActionAttempts < MAX_ACTION_ATTEMPTS) {
