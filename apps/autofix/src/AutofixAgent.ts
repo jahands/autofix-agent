@@ -74,6 +74,10 @@ const nextActionMap: Record<AgentStatus, AgentAction> = {
 	pr_creating: 'idle',
 }
 
+function getNextAction(currentStatus: AgentStatus): AgentAction {
+	return nextActionMap[currentStatus]
+}
+
 const actionToInProgressStatusMap: Record<Exclude<AgentAction, 'idle'>, AgentStatus> = {
 	initialize_container: 'container_initializing',
 	check_container: 'container_check_running',
@@ -83,10 +87,6 @@ const actionToInProgressStatusMap: Record<Exclude<AgentAction, 'idle'>, AgentSta
 	push_changes: 'changes_pushing',
 	create_pr: 'pr_creating',
 	finish: 'done', // 'finish' action leads to 'done' status directly
-}
-
-function getNextAction(currentStatus: AgentStatus): AgentAction {
-	return nextActionMap[currentStatus]
 }
 
 export class AutofixAgent extends Agent<Env, State> {
