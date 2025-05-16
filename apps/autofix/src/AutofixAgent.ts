@@ -24,8 +24,7 @@ const AgentActions = [
 	},
 	{ name: 'create_pr', description: 'Create a pull request for the fix.' },
 	{ name: 'finish', description: 'Agent has completed its task cycle.' },
-	{ name: 'handle_error', description: 'An error occurred and is being handled.' },
-	{ name: 'handle_timeout', description: 'The action timed out.' },
+	{ name: 'handle_error', description: 'An error occurred and is being handled.' }, // Renamed from 'error'
 ] as const satisfies Array<{
 	name: string
 	description: string
@@ -52,41 +51,13 @@ type AgentState = {
 function getNextAction({
 	currentAction,
 	progress,
-	lastStatusUpdateTimestamp,
 }: {
 	currentAction: AgentAction
 	progress: ProgressStatus
-	lastStatusUpdateTimestamp: number
 }): AgentAction {
 	return (
-		match({ currentAction, progress, lastStatusUpdateTimestamp })
+		match({ currentAction, progress })
 			.returnType<AgentAction>()
-			// Timeout check
-			.with(
-				{
-					progress: 'running',
-					// Check if currentAction is NOT handle_error or handle_timeout itself to prevent infinite loops
-					// if these actions were to somehow get stuck.
-					currentAction: P.not(P.union('handle_error', 'handle_timeout')),
-					lastStatusUpdateTimestamp: P.when((ts) => Date.now() - ts > TIMEOUT_DURATION_MS),
-				},
-				(state) => {
-					// When a timeout is detected, the 'handle_timeout' action is returned.
-					// The errorDetails about the action that timed out will be set
-					// when 'handle_timeout' is processed by processNextAction before dispatch.
-					// Or, more accurately, 'handle_timeout' handler will set its own error details if it wants to.
-					// The current structure of setActionOutcome for failure already captures currentAction.
-					// So, if 'foo' times out, getNextAction returns 'handle_timeout'.
-					// processNextAction sets currentAction to 'handle_timeout', progress to 'running'.
-					// handleTimeoutAction will then be called. It should probably record that 'foo' timed out.
-					// For now, let's assume errorDetails are NOT set here but by the handler of handle_timeout.
-					console.warn(
-						`[AutofixAgent:getNextAction] Timeout detected for action '${state.currentAction}'. Transitioning to 'handle_timeout'.`
-					)
-					return 'handle_timeout'
-				}
-			)
-
 			// Initial kick-off
 			.with({ currentAction: 'idle', progress: 'idle' }, () => 'initialize_container')
 
@@ -99,10 +70,8 @@ function getNextAction({
 			.with({ currentAction: 'create_pr', progress: 'success' }, () => 'finish')
 			.with({ currentAction: 'finish', progress: 'success' }, () => 'idle')
 			.with({ currentAction: 'handle_error', progress: 'success' }, () => 'idle')
-			// After successfully handling a timeout, we should then formally handle it as an error.
-			.with({ currentAction: 'handle_timeout', progress: 'success' }, () => 'handle_error')
 
-			// If any stage fails (and it's not a timeout, which is handled above), transition to handle_error
+			// If any stage fails, transition to handle_error
 			.when(
 				(state) => state.progress === 'failed',
 				() => 'handle_error'
@@ -170,10 +139,29 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	public async processNextAction(): Promise<void> {
 		const state = this.state
 
+		// Timeout check
+		if (state.progress === 'running') {
+			const duration = Date.now() - state.lastStatusUpdateTimestamp
+			if (duration > TIMEOUT_DURATION_MS) {
+				const timeoutMessage = `Action '${state.currentAction}' timed out after ${Math.round(duration / 1000)}s.`
+				console.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
+				this.setActionOutcome({ progress: 'failed', error: new Error(timeoutMessage) })
+				this.setState({
+					...this.state,
+					currentAction: 'handle_error',
+					progress: 'running', // The handle_error action is now running
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+
+				// Dispatch the handle_error action instead of using getNextAction
+				await this.dispatchActionHandler('handle_error')
+				return
+			}
+		}
+
 		const actionToExecute = getNextAction({
 			currentAction: state.currentAction,
 			progress: state.progress,
-			lastStatusUpdateTimestamp: state.lastStatusUpdateTimestamp,
 		})
 
 		await match(actionToExecute)
@@ -200,27 +188,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				// If actionToExecute is 'idle', we simply do nothing further in this processing cycle.
 			})
 			.otherwise(async (newActionToDispatch) => {
-				// If we are about to dispatch 'handle_timeout', it means an action *has* timed out.
-				// We need to record which action timed out.
-				// The 'newActionToDispatch' is 'handle_timeout'.
-				// The action that *actually* timed out is 'state.currentAction'.
-				let errorDetailsToSet = state.errorDetails
-				if (newActionToDispatch === 'handle_timeout' && state.progress === 'running') {
-					const timedOutAction = state.currentAction
-					const duration = Date.now() - state.lastStatusUpdateTimestamp
-					const timeoutMessage = `Action '${timedOutAction}' timed out after ${Math.round(duration / 1000)}s.`
-					console.warn(
-						`[AutofixAgent:processNextAction] ${timeoutMessage} - setting up for handle_timeout action.`
-					)
-					errorDetailsToSet = { message: timeoutMessage, failedAction: timedOutAction }
-				}
-
 				this.setState({
 					...state,
 					currentAction: newActionToDispatch,
 					progress: 'running',
 					lastStatusUpdateTimestamp: Date.now(),
-					errorDetails: errorDetailsToSet, // Set error details if it's a timeout
 				})
 				console.log(
 					`[AutofixAgent] Transitioning to action: '${newActionToDispatch}', progress: 'running'. Dispatching handler.`
@@ -263,7 +235,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	private async dispatchActionHandler(action: AgentAction): Promise<void> {
+		console.log(`[AutofixAgent] Dispatching handler for action: ${action}`)
 		try {
+			// Note: lastStatusUpdateTimestamp is set before dispatching, so handlers don't need to set it at their start.
 			await match(action)
 				.with('initialize_container', async () => this.handleInitializeContainer())
 				.with('detect_issues', async () => this.handleDetectIssues())
@@ -272,18 +246,15 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				.with('push_changes', async () => this.handlePushChanges())
 				.with('create_pr', async () => this.handleCreatePr())
 				.with('finish', async () => this.handleFinish())
-				.with('handle_error', async () => this.handleError())
-				.with('handle_timeout', async () => this.handleTimeoutAction())
+				.with('handle_error', async () => this.handleError()) // Renamed from 'error'
 				.with('idle', async () => {
-					// This case should ideally not be reached due to logic in processNextAction
+					// Should ideally not be dispatched, but handle defensively
 					console.error(
-						"[AutofixAgent:dispatchActionHandler] 'idle' action was dispatched. This is unexpected."
+						"[AutofixAgent] dispatchActionHandler called with 'idle'. Setting to idle progress."
 					)
-					// Attempt to recover by ensuring state is idle if it somehow got here.
-					if (this.state.currentAction !== 'idle' || this.state.progress !== 'idle') {
+					if (this.state.currentAction === 'idle' && this.state.progress !== 'idle') {
 						this.setState({
 							...this.state,
-							currentAction: 'idle',
 							progress: 'idle',
 							errorDetails: undefined,
 							lastStatusUpdateTimestamp: Date.now(),
@@ -292,9 +263,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				})
 				.exhaustive()
 		} catch (err) {
-			const errorMessage =
-				err instanceof Error ? err.message : 'Unknown error during action execution'
-			this.setActionOutcome({ progress: 'failed', error: new Error(errorMessage) })
+			this.setActionOutcome({ progress: 'failed', error: err })
 		}
 	}
 
@@ -376,44 +345,19 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	private async handleFinish(): Promise<void> {
-		console.log('[AutofixAgent] handleFinish: Process completed.')
-		// Potentially, notify completion, clean up resources, etc.
+		console.log('[AutofixAgent] Executing: handleFinish. Agent process cycle completed.')
+		// This stage mainly signifies the end of a full pass.
+		// Setting progress to 'success' will allow getNextAction to transition to 'idle'.
 		this.setActionOutcome({ progress: 'success' })
 	}
 
 	private async handleError(): Promise<void> {
-		const errorDetails = this.state.errorDetails || {
-			message: 'Unknown error occurred',
-			failedAction: this.state.currentAction, // This would be 'handle_error' itself, fallback.
-		}
-		console.error(
-			`[AutofixAgent] handleError: Processing error for action '${errorDetails.failedAction}'. Message: ${errorDetails.message}`
+		console.warn(
+			`[AutofixAgent] Handling error. Details: ${JSON.stringify(this.state.errorDetails)}`
 		)
-		// For now, simply log and mark as success to allow transition to idle.
-		// In a real scenario, might involve retries, notifications, specific cleanup.
-		this.setActionOutcome({ progress: 'success' })
-	}
-
-	// New handler for timeouts
-	private async handleTimeoutAction(): Promise<void> {
-		const { errorDetails, currentAction } = this.state
-
-		// currentAction here is 'handle_timeout'.
-		// errorDetails should contain information about the action that *actually* timed out.
-		if (errorDetails && errorDetails.failedAction) {
-			console.warn(
-				`[AutofixAgent] handleTimeoutAction: Action '${errorDetails.failedAction}' has officially timed out. Original error: ${errorDetails.message}`
-			)
-		} else {
-			// This case should ideally not be reached if processNextAction sets errorDetails correctly
-			// when transitioning to 'handle_timeout'.
-			console.warn(
-				`[AutofixAgent] handleTimeoutAction: Executing due to timeout, but specific timed-out action details are missing. Current action was '${currentAction}'.`
-			)
-		}
-
-		// Mark the 'handle_timeout' action itself as successfully processed.
-		// getNextAction will then transition from ('handle_timeout', 'success') to 'handle_error'.
-		this.setActionOutcome({ progress: 'success' })
+		// For now, handling an error means acknowledging it and setting progress to success,
+		// which will transition the agent to idle via getNextAction('handle_error', 'success').
+		// Future: Implement retry logic, specific error handling, or notifications here.
+		this.setActionOutcome({ progress: 'success' }) // errorDetails will be cleared by processNextAction when transitioning to idle
 	}
 }
