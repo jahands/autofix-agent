@@ -20,7 +20,7 @@
 		"@hono/node-server": "1.14.1",
 		"@hono/standard-validator": "0.1.2",
 		"@hono/zod-validator": "0.5.0",
-		"@octokit/rest": "^21.1.1",
+		"@octokit/rest": "21.1.1",
 		"@repo/hono-helpers": "workspace:*",
 		"agents": "0.0.87",
 		"ai": "4.3.10",
