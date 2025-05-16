@@ -157,41 +157,41 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		const actionToExecute = getNextAction(state.currentActionStage, state.progress)
 
-		if (actionToExecute === 'idle') {
-			console.log(
-				`[AutofixAgent] Current stage '${state.currentActionStage}' with progress '${state.progress}' results in 'idle' next action. No new stage initiated.`
-			)
-			// Ensure timestamp is updated if we are settling into idle from a completed stage
-			if (
-				(state.currentActionStage === 'finish' || state.currentActionStage === 'handle_error') &&
-				state.progress === 'success'
-			) {
+		await match(actionToExecute)
+			.with('idle', async () => {
+				console.log(
+					`[AutofixAgent] Current stage '${state.currentActionStage}' with progress '${state.progress}' results in 'idle' next action. No new stage initiated.`
+				)
+				// Ensure timestamp is updated if we are settling into idle from a completed stage
+				if (
+					(state.currentActionStage === 'finish' || state.currentActionStage === 'handle_error') &&
+					state.progress === 'success'
+				) {
+					this.setState({
+						...state,
+						currentActionStage: 'idle',
+						progress: 'idle',
+						errorDetails: undefined,
+						lastStatusUpdateTimestamp: Date.now(),
+					})
+					console.log(
+						'[AutofixAgent] Process cycle ended (finish/error handled). Agent is now truly idle.'
+					)
+				}
+				// If actionToExecute is 'idle', we simply do nothing further in this processing cycle.
+			})
+			.otherwise(async (newActionToDispatch) => {
 				this.setState({
 					...state,
-					currentActionStage: 'idle',
-					progress: 'idle',
-					errorDetails: undefined,
+					currentActionStage: newActionToDispatch,
+					progress: 'running',
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 				console.log(
-					'[AutofixAgent] Process cycle ended (finish/error handled). Agent is now truly idle.'
+					`[AutofixAgent] Transitioning to stage: '${newActionToDispatch}', progress: 'running'. Dispatching handler.`
 				)
-			}
-			return
-		}
-
-		// If there's a new action/stage to execute:
-		this.setState({
-			...state,
-			currentActionStage: actionToExecute,
-			progress: 'running',
-			lastStatusUpdateTimestamp: Date.now(), // Update timestamp when a new action starts
-		})
-
-		console.log(
-			`[AutofixAgent] Transitioning to stage: '${actionToExecute}', progress: 'running'. Dispatching handler.`
-		)
-		await this.dispatchActionHandler(actionToExecute)
+				await this.dispatchActionHandler(newActionToDispatch)
+			})
 	}
 
 	private async dispatchActionHandler(action: AgentAction): Promise<void> {
