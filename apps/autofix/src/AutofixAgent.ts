@@ -89,6 +89,10 @@ const actionToInProgressStatusMap: Record<Exclude<AgentAction, 'idle'>, AgentSta
 	finish: 'done', // 'finish' action leads to 'done' status directly
 }
 
+function getActionInProgressStatus(action: Exclude<AgentAction, 'idle'>): AgentStatus {
+	return actionToInProgressStatusMap[action]
+}
+
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
@@ -138,8 +142,7 @@ export class AutofixAgent extends Agent<Env, State> {
 			return
 		}
 
-		const newStatusWhileExecuting =
-			actionToInProgressStatusMap[actionToExecute as Exclude<AgentAction, 'idle'>]
+		const newStatusWhileExecuting = getActionInProgressStatus(actionToExecute)
 
 		this.setState({
 			...state,
