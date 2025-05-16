@@ -1,4 +1,5 @@
 import { Agent } from 'agents'
+import { match, P } from 'ts-pattern'
 
 import type { Env } from './autofix.context'
 
@@ -50,6 +51,32 @@ const AgentStatuses = [
 }>
 
 type AgentStatus = (typeof AgentStatuses)[number]['name']
+
+function getNextAction(currentStatus: AgentStatus): AgentAction {
+	return (
+		match(currentStatus)
+			.returnType<AgentAction>()
+			.with('idle', () => 'initialize_container')
+			.with('container_ready', () => 'check_container')
+			.with('container_check_complete', () => 'detect_issues')
+			.with('issue_detection_complete', () => 'fix_issues')
+			.with('issue_fixing_complete', () => 'commit_changes')
+			.with('changes_committed', () => 'push_changes')
+			.with('changes_pushed', () => 'create_pr')
+			.with('pr_created', () => 'finish')
+			.with('done', () => 'idle')
+			.with('error', () => 'idle')
+			// For "in-progress" statuses, the agent is busy. The "next action" to initiate is 'idle'.
+			.with('container_initializing', () => 'idle')
+			.with('container_check_running', () => 'idle')
+			.with('issue_detection_running', () => 'idle')
+			.with('issue_fixing_running', () => 'idle')
+			.with('changes_committing', () => 'idle')
+			.with('changes_pushing', () => 'idle')
+			.with('pr_creating', () => 'idle')
+			.exhaustive()
+	)
+}
 
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
