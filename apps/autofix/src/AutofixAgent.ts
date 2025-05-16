@@ -42,28 +42,28 @@ const TIMEOUT_DURATION_MS = ms('10 minutes')
 type AgentState = {
 	repo: string
 	branch: string
-	currentActionStage: AgentAction // The current lifecycle stage
+	currentAction: AgentAction // The current lifecycle stage
 	progress: ProgressStatus // The progress of that stage
 	lastStatusUpdateTimestamp: number // Timestamp of the last stage/progress change
-	errorDetails?: { message: string; failedStage: AgentAction } // Optional error context
+	errorDetails?: { message: string; failedAction: AgentAction } // Optional error context
 }
 
-function getNextAction(currentStage: AgentAction, progress: ProgressStatus): AgentAction {
+function getNextAction(currentAction: AgentAction, progress: ProgressStatus): AgentAction {
 	return (
-		match({ currentStage, progress })
+		match({ currentAction, progress })
 			.returnType<AgentAction>()
 			// Initial kick-off
-			.with({ currentStage: 'idle', progress: 'idle' }, () => 'initialize_container')
+			.with({ currentAction: 'idle', progress: 'idle' }, () => 'initialize_container')
 
 			// Successful stage transitions
-			.with({ currentStage: 'initialize_container', progress: 'success' }, () => 'detect_issues')
-			.with({ currentStage: 'detect_issues', progress: 'success' }, () => 'fix_issues')
-			.with({ currentStage: 'fix_issues', progress: 'success' }, () => 'commit_changes')
-			.with({ currentStage: 'commit_changes', progress: 'success' }, () => 'push_changes')
-			.with({ currentStage: 'push_changes', progress: 'success' }, () => 'create_pr')
-			.with({ currentStage: 'create_pr', progress: 'success' }, () => 'finish')
-			.with({ currentStage: 'finish', progress: 'success' }, () => 'idle')
-			.with({ currentStage: 'handle_error', progress: 'success' }, () => 'idle')
+			.with({ currentAction: 'initialize_container', progress: 'success' }, () => 'detect_issues')
+			.with({ currentAction: 'detect_issues', progress: 'success' }, () => 'fix_issues')
+			.with({ currentAction: 'fix_issues', progress: 'success' }, () => 'commit_changes')
+			.with({ currentAction: 'commit_changes', progress: 'success' }, () => 'push_changes')
+			.with({ currentAction: 'push_changes', progress: 'success' }, () => 'create_pr')
+			.with({ currentAction: 'create_pr', progress: 'success' }, () => 'finish')
+			.with({ currentAction: 'finish', progress: 'success' }, () => 'idle')
+			.with({ currentAction: 'handle_error', progress: 'success' }, () => 'idle')
 
 			// If any stage fails, transition to handle_error
 			.when(
@@ -95,7 +95,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.setState({
 			repo,
 			branch,
-			currentActionStage: 'idle',
+			currentAction: 'idle',
 			progress: 'idle',
 			errorDetails: undefined,
 			lastStatusUpdateTimestamp: Date.now(),
@@ -107,7 +107,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		return {
 			repo: this.state.repo,
 			branch: this.state.branch,
-			currentActionStage: this.state.currentActionStage,
+			currentAction: this.state.currentAction,
 			progress: this.state.progress,
 			errorDetails: this.state.errorDetails,
 			lastStatusUpdateTimestamp: this.state.lastStatusUpdateTimestamp,
@@ -137,13 +137,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		if (state.progress === 'running') {
 			const duration = Date.now() - state.lastStatusUpdateTimestamp
 			if (duration > TIMEOUT_DURATION_MS) {
-				const timeoutMessage = `Action '${state.currentActionStage}' timed out after ${Math.round(duration / 1000)}s.`
+				const timeoutMessage = `Action '${state.currentAction}' timed out after ${Math.round(duration / 1000)}s.`
 				console.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
 				this.setState({
 					...state,
-					currentActionStage: 'handle_error',
+					currentAction: 'handle_error',
 					progress: 'running', // The handle_error action is now running
-					errorDetails: { message: timeoutMessage, failedStage: state.currentActionStage },
+					errorDetails: { message: timeoutMessage, failedAction: state.currentAction },
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 				await this.dispatchActionHandler('handle_error')
@@ -151,21 +151,21 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		const actionToExecute = getNextAction(state.currentActionStage, state.progress)
+		const actionToExecute = getNextAction(state.currentAction, state.progress)
 
 		await match(actionToExecute)
 			.with('idle', async () => {
 				console.log(
-					`[AutofixAgent] Current stage '${state.currentActionStage}' with progress '${state.progress}' results in 'idle' next action. No new stage initiated.`
+					`[AutofixAgent] Current action '${state.currentAction}' with progress '${state.progress}' results in 'idle' next action. No new action initiated.`
 				)
 				// Ensure timestamp is updated if we are settling into idle from a completed stage
 				if (
-					(state.currentActionStage === 'finish' || state.currentActionStage === 'handle_error') &&
+					(state.currentAction === 'finish' || state.currentAction === 'handle_error') &&
 					state.progress === 'success'
 				) {
 					this.setState({
 						...state,
-						currentActionStage: 'idle',
+						currentAction: 'idle',
 						progress: 'idle',
 						errorDetails: undefined,
 						lastStatusUpdateTimestamp: Date.now(),
@@ -179,19 +179,19 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.otherwise(async (newActionToDispatch) => {
 				this.setState({
 					...state,
-					currentActionStage: newActionToDispatch,
+					currentAction: newActionToDispatch,
 					progress: 'running',
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 				console.log(
-					`[AutofixAgent] Transitioning to stage: '${newActionToDispatch}', progress: 'running'. Dispatching handler.`
+					`[AutofixAgent] Transitioning to action: '${newActionToDispatch}', progress: 'running'. Dispatching handler.`
 				)
 				await this.dispatchActionHandler(newActionToDispatch)
 			})
 	}
 
 	private async dispatchActionHandler(action: AgentAction): Promise<void> {
-		console.log(`[AutofixAgent] Dispatching handler for action/stage: ${action}`)
+		console.log(`[AutofixAgent] Dispatching handler for action: ${action}`)
 		try {
 			// Note: lastStatusUpdateTimestamp is set before dispatching, so handlers don't need to set it at their start.
 			await match(action)
@@ -208,7 +208,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					console.warn(
 						"[AutofixAgent] dispatchActionHandler called with 'idle'. Setting to idle progress."
 					)
-					if (this.state.currentActionStage === 'idle' && this.state.progress !== 'idle') {
+					if (this.state.currentAction === 'idle' && this.state.progress !== 'idle') {
 						this.setState({
 							...this.state,
 							progress: 'idle',
@@ -220,18 +220,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				.exhaustive() // Ensures all actions are handled
 		} catch (err) {
 			const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-			console.error(`[AutofixAgent] Error executing action/stage ${action}:`, err)
+			console.error(`[AutofixAgent] Error executing action: ${action}:`, err)
 			const currentState = this.state || {
 				repo: '',
 				branch: '',
-				currentActionStage: action,
+				currentAction: action,
 				progress: 'idle',
 				lastStatusUpdateTimestamp: Date.now(),
 			}
 			this.setState({
 				...currentState,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: currentState.currentActionStage },
+				errorDetails: { message: errorMessage, failedAction: currentState.currentAction },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
@@ -239,7 +239,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 	// --- Action Handlers ---
 	// Each handler now sets progress to 'success' or 'failed'.
-	// 'currentActionStage' is already set by processNextAction before these are called.
+	// 'currentAction' is already set by processNextAction before these are called.
 
 	private async handleInitializeContainer(): Promise<void> {
 		console.log('[AutofixAgent] Executing: handleInitializeContainer')
@@ -260,7 +260,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: 'initialize_container' },
+				errorDetails: { message: errorMessage, failedAction: 'initialize_container' },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
@@ -284,7 +284,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: 'detect_issues' },
+				errorDetails: { message: errorMessage, failedAction: 'detect_issues' },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
@@ -308,7 +308,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: 'fix_issues' },
+				errorDetails: { message: errorMessage, failedAction: 'fix_issues' },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
@@ -332,7 +332,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: 'commit_changes' },
+				errorDetails: { message: errorMessage, failedAction: 'commit_changes' },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
@@ -356,7 +356,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: 'push_changes' },
+				errorDetails: { message: errorMessage, failedAction: 'push_changes' },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
@@ -380,7 +380,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				progress: 'failed',
-				errorDetails: { message: errorMessage, failedStage: 'create_pr' },
+				errorDetails: { message: errorMessage, failedAction: 'create_pr' },
 				lastStatusUpdateTimestamp: Date.now(),
 			})
 		}
