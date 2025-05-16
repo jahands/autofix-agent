@@ -44,34 +44,34 @@ type AgentState = {
 	errorDetails?: { message: string; failedStage: AgentAction } // Optional error context
 }
 
-// Map for determining the next action when the current action/stage is successfully completed
-const nextStageOnSuccessMap: Partial<Record<AgentAction, AgentAction>> = {
-	initialize_container: 'detect_issues',
-	detect_issues: 'fix_issues',
-	fix_issues: 'commit_changes',
-	commit_changes: 'push_changes',
-	push_changes: 'create_pr',
-	create_pr: 'finish',
-	finish: 'idle', // After 'finish' successfully completes, the agent becomes 'idle'
-	handle_error: 'idle', // Renamed from 'error'
-}
-
 function getNextAction(currentStage: AgentAction, progress: ProgressStatus): AgentAction {
-	if (currentStage === 'idle' && progress === 'idle') {
-		return 'initialize_container' // Start the process
-	}
+	return (
+		match({ currentStage, progress })
+			.returnType<AgentAction>()
+			// Initial kick-off
+			.with({ currentStage: 'idle', progress: 'idle' }, () => 'initialize_container')
 
-	if (progress === 'success') {
-		return nextStageOnSuccessMap[currentStage] || 'idle' // Go to next defined stage, or idle if at the end or undefined
-	}
+			// Successful stage transitions
+			.with({ currentStage: 'initialize_container', progress: 'success' }, () => 'detect_issues')
+			.with({ currentStage: 'detect_issues', progress: 'success' }, () => 'fix_issues')
+			.with({ currentStage: 'fix_issues', progress: 'success' }, () => 'commit_changes')
+			.with({ currentStage: 'commit_changes', progress: 'success' }, () => 'push_changes')
+			.with({ currentStage: 'push_changes', progress: 'success' }, () => 'create_pr')
+			.with({ currentStage: 'create_pr', progress: 'success' }, () => 'finish')
+			.with({ currentStage: 'finish', progress: 'success' }, () => 'idle')
+			.with({ currentStage: 'handle_error', progress: 'success' }, () => 'idle')
 
-	if (progress === 'failed') {
-		return 'handle_error' // Renamed from 'error'
-	}
+			// If any stage fails, transition to handle_error
+			.when(
+				(state) => state.progress === 'failed',
+				() => 'handle_error'
+			)
 
-	// If in-progress, pending, or failed, the agent should not start a new action automatically.
-	// It should wait for the current action to complete or for manual intervention/retry logic for 'failed'.
-	return 'idle'
+			// Default case for any other combination (e.g., in-progress, pending,
+			// or 'idle' stage with 'success'/'failed' progress if not caught above, though 'failed' is).
+			// These should result in an 'idle' action, meaning the agent waits.
+			.otherwise(() => 'idle')
+	)
 }
 
 export class AutofixAgent extends Agent<Env, AgentState> {
