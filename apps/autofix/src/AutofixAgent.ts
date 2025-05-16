@@ -7,6 +7,30 @@ type State = {
 	branch: string
 }
 
+type AutofixStep = {
+	name: string
+	description: string
+	action: string
+}
+
+const AutofixSteps = [
+	{
+		name: 'Idle',
+		description: 'The agent is idle',
+		action: 'idle',
+	},
+	{
+		name: 'Initialize',
+		description: 'Initialize the container',
+		action: 'container_initialize',
+	},
+	{
+		name: 'Check',
+		description: 'Check the container',
+		action: 'container_check',
+	},
+] as const satisfies AutofixStep[]
+
 export class AutofixAgent extends Agent<Env, State> {
 	// Define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
