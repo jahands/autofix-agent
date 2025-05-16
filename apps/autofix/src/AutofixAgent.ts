@@ -154,33 +154,27 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			})
 			// Successful stage transitions - each will set state and call the next handler
 			.with({ currentAction: 'initialize_container', progress: 'success' }, async () => {
-				const nextAction: AgentAction = 'detect_issues'
-				setRunning(nextAction)
+				setRunning('detect_issues')
 				await this.handleDetectIssues()
 			})
 			.with({ currentAction: 'detect_issues', progress: 'success' }, async () => {
-				const nextAction: AgentAction = 'fix_issues'
-				setRunning(nextAction)
+				setRunning('fix_issues')
 				await this.handleFixIssues()
 			})
 			.with({ currentAction: 'fix_issues', progress: 'success' }, async () => {
-				const nextAction: AgentAction = 'commit_changes'
-				setRunning(nextAction)
+				setRunning('commit_changes')
 				await this.handleCommitChanges()
 			})
 			.with({ currentAction: 'commit_changes', progress: 'success' }, async () => {
-				const nextAction: AgentAction = 'push_changes'
-				setRunning(nextAction)
+				setRunning('push_changes')
 				await this.handlePushChanges()
 			})
 			.with({ currentAction: 'push_changes', progress: 'success' }, async () => {
-				const nextAction: AgentAction = 'create_pr'
-				setRunning(nextAction)
+				setRunning('create_pr')
 				await this.handleCreatePr()
 			})
 			.with({ currentAction: 'create_pr', progress: 'success' }, async () => {
-				const nextAction: AgentAction = 'finish'
-				setRunning(nextAction)
+				setRunning('finish')
 				await this.handleFinish()
 			})
 			// Transitions to idle state (no further handler call within this cycle)
