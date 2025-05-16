@@ -105,6 +105,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		}
 	}
 
+	/**
+	 * Schedules the next alarm for the agent.
+	 * @param nextAlarm Optional specific date for the next alarm. Defaults to 5 seconds from now.
+	 */
 	private setNextAlarm(nextAlarm?: Date) {
 		const nextAlarmDate = nextAlarm ?? datePlus('5 seconds')
 		void this.ctx.storage.setAlarm(nextAlarmDate)
@@ -119,7 +123,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		// grab a copy of state before we make any mutations
 		const state = structuredClone(this.state)
 
-		// Helper functions defined at the top of onAlarm to be accessible throughout
+		/**
+		 * Sets the agent's current action to a new action and progress to 'running'.
+		 * Preserves existing errorDetails.
+		 * @param newAction The action to transition to.
+		 */
 		const setRunning = (newAction: AgentAction): void => {
 			// it's crucial to use the current `this.state` here, not a potentially stale clone from onAlarm's start,
 			// especially if errorDetails were set by a timeout or a previous failing action before this transition occurs.
@@ -136,6 +144,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			)
 		}
 
+		/**
+		 * Wraps an action handler callback, setting its state to running and managing its outcome (success/failure).
+		 * @param actionToRun The action being executed.
+		 * @param callback The async function representing the action's logic.
+		 */
 		const runActionHandler = async (actionToRun: AgentAction, callback: () => Promise<void>) => {
 			setRunning(actionToRun) // This also logs the transition
 			// The redundant log previously here has been removed.
@@ -147,7 +160,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		// Timeout check for actions that are 'running'
+		// Timeout check for actions that are 'running' so
+		// that we don't get stuck in a loop indefinitely.
 		if (state.progress === 'running') {
 			const duration = Date.now() - state.lastStatusUpdateTimestamp
 			if (duration > TIMEOUT_DURATION_MS) {
@@ -274,6 +288,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.exhaustive()
 	}
 
+	/**
+	 * Sets the outcome (success or failure) of the current action, updating progress and error details accordingly.
+	 * @param options Specifies the progress status and error object if failed.
+	 */
 	private setActionOutcome(
 		options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }
 	): void {
@@ -310,8 +328,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	// =========================== //
 	// ===== Action Handlers ===== //
 	// =========================== //
-	// each handler now performs its core logic and can throw an error.
-	// setActionOutcome is called by runActionHandler.
 
 	private async handleInitializeContainer(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleInitializeContainer')
