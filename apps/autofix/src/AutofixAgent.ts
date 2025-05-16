@@ -199,7 +199,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
-			// Explicitly handle all 'failed' progress states first
+			// handle failed actions
 			.with(
 				{
 					currentAction: P.union(
@@ -218,7 +218,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					console.log(
 						`[AutofixAgent] Action '${matchedState.currentAction}' failed. Transitioning to 'handle_error'. Error details should be set.`
 					)
-					// Based on user's existing logic for this transition (from the old .when clause)
 					this.setState({
 						...this.state,
 						currentAction: 'handle_error',
@@ -239,14 +238,14 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
-			// Explicitly handle cases where an action is 'running'
+			// handle running actions
 			.with({ currentAction: P.not('idle'), progress: 'running' }, async (matchedState) => {
 				console.log(
 					`[AutofixAgent] Action '${matchedState.currentAction}' is 'running'. Agent waits for completion or timeout.`
 				)
 				// No state change, just wait for the next alarm cycle.
 			})
-			// Handle anomalous states for 'idle' action
+			// handle anomalous states for 'idle' action
 			.with(
 				{ currentAction: 'idle', progress: P.union('running', 'success') },
 				async (matchedState) => {
@@ -255,7 +254,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					)
 				}
 			)
-			// Handle anomalous states where a normally active action has 'idle' progress
+			// handle anomalous states where a normally active action has 'idle' progress
 			.with({ currentAction: P.not('idle'), progress: 'idle' }, async (matchedState) => {
 				console.warn(
 					`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Agent waits.`
