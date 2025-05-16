@@ -1,75 +1,33 @@
-import { DurableObject } from 'cloudflare:workers'
+import { Container } from 'cf-containers'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
-import { MAX_CONTAINERS, proxyFetch, startAndWaitForPort } from './containerHelpers'
-import { getContainerManager } from './containerManager'
+import { proxyFetch } from './containerHelpers'
 import { fileToBase64 } from './utils'
 
 import type { Env } from '../autofix.context'
 import type { ExecParams, FileList, FileWrite } from '../shared/schema'
 
-export class UserContainer extends DurableObject<Env> {
-	constructor(
-		public ctx: DurableObjectState,
-		public env: Env
-	) {
-		console.log('creating user container DO')
-		super(ctx, env)
-	}
+export class UserContainer extends Container<Env> {
+	// Configure default port for the container
+	defaultPort = 8080
+	// Set the timeout for sleeping the container after inactivity
+	sleepAfter = '10m'
+	// Environment variables to pass to the container
+	envVars = { GIT_CLONE_URL: 'https://github.com/mikenomitch/containers.git' }
+	// Enable internet access for the container
+	enableInternet = true
 
-	async destroyContainer(): Promise<void> {
-		await this.ctx.container?.destroy()
-	}
-
-	async killContainer(): Promise<void> {
-		console.log('Reaping container')
-		const containerManager = getContainerManager(this.env)
-		const active = await containerManager.listActive()
-		if (this.ctx.id.toString() in active) {
-			console.log('killing container')
-			await this.destroyContainer()
-			await containerManager.killContainer(this.ctx.id.toString())
-		}
-	}
-
-	async container_initialize(gitURL: string): Promise<string> {
-		// kill container
-		await this.killContainer()
-
-		// try to cleanup cleanup old containers
-		const containerManager = getContainerManager(this.env)
-
-		// if more than half of our containers are being used, let's try reaping
-		if ((await containerManager.listActive()).length >= MAX_CONTAINERS / 2) {
-			await containerManager.tryKillOldContainers()
-			if ((await containerManager.listActive()).length >= MAX_CONTAINERS) {
-				throw new Error(
-					`Unable to reap enough containers. There are ${MAX_CONTAINERS} active container sandboxes, please wait`
-				)
-			}
-		}
+	// TODO: Need to set envVars with passed through gitURL
+	async container_initialize(gitURL: string): Promise<void> {
+		// stop container
+		await this.stopContainer()
 
 		// start container
-		let startedContainer = false
-		await this.ctx.blockConcurrencyWhile(async () => {
-			startedContainer = await startAndWaitForPort({
-				gitURL,
-				environment: this.env.ENVIRONMENT,
-				container: this.ctx.container,
-				portToAwait: OPEN_CONTAINER_PORT,
-			})
-		})
-		if (!startedContainer) {
-			throw new Error('Failed to start container')
-		}
-
-		// track and manage lifecycle
-		await containerManager.trackContainer(this.ctx.id.toString())
-
-		return `Created new container`
+		await this.startAndWaitForPorts(OPEN_CONTAINER_PORT)
 	}
 
 	async container_ping(): Promise<string> {
+		// TODO: Replace proxyFetch with this.containerFetch()
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
