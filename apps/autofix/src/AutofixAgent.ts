@@ -25,9 +25,25 @@ export class AutofixAgent extends Agent<Env, State> {
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
 
+		// Start container, and destroy any active containers
 		await userContainer.container_initialize(repo)
-		const ls = await userContainer.container_ls()
-		const res = await userContainer.container_ping()
-		return JSON.stringify({ ...ls, res })
+	}
+
+	async pingContainer() {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		const pong = await userContainer.container_ping()
+		return { res: pong }
+	}
+
+	async listContainerFiles() {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		// const logs = await userContainer.container_exec({
+		// 	args: 'git clone https://github.com/jahands/autofix-agent.git',
+		// 	streamStderr: true,
+		// })
+		const { resources } = await userContainer.container_ls()
+		return { resources }
 	}
 }

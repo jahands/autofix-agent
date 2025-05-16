@@ -1,13 +1,11 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { AutofixAgent } from './AutofixAgent'
-import type { ContainerManager } from './container-server/containerManager'
 import type { UserContainer } from './container-server/userContainer'
 
 export type Env = SharedHonoEnv & {
 	// add additional Bindings here
 	AutofixAgent: DurableObjectNamespace<AutofixAgent>
-	CONTAINER_MANAGER: DurableObjectNamespace<ContainerManager>
 	USER_CONTAINER: DurableObjectNamespace<UserContainer>
 	USER_BLOCKLIST: KVNamespace
 	MCP_METRICS: AnalyticsEngineDataset
