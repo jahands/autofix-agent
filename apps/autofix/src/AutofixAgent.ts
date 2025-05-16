@@ -5,42 +5,45 @@ import type { Env } from './autofix.context'
 type State = {
 	repo: string
 	branch: string
-	status: AgentStatus
+	action: AgentAction
+	currentStatus: AgentStatus
 }
 
+const AgentActions = [
+	{ name: 'idle', description: 'No current action.' },
+	{ name: 'initialize_container', description: 'Start the process of initializing the container.' },
+	{ name: 'check_container', description: 'Start the process of checking the container.' },
+	{ name: 'detect_issues', description: 'Start the process of detecting issues.' },
+	{ name: 'fix_issues', description: 'Start the process of fixing issues.' },
+	{ name: 'commit_changes', description: 'Start the process of committing changes.' },
+	{ name: 'push_changes', description: 'Start the process of pushing changes.' },
+	{ name: 'create_pr', description: 'Start the process of creating a pull request.' },
+	{ name: 'finish', description: 'Agent has completed its task.' },
+] as const satisfies Array<{
+	name: string
+	description: string
+}>
+
+type AgentAction = (typeof AgentActions)[number]['name']
+
 const AgentStatuses = [
-	{
-		name: 'idle',
-		description: 'The agent is idle',
-	},
-	{
-		name: 'container_initialize',
-		description: 'Initialize the container',
-	},
-	{
-		name: 'container_check',
-		description: 'Check the container',
-	},
-	{
-		name: 'detect_issues',
-		description: 'Detect issues in the project',
-	},
-	{
-		name: 'fix_issues',
-		description: 'Fix the issues in the project',
-	},
-	{
-		name: 'commit_changes',
-		description: 'Commit the changes to the project',
-	},
-	{
-		name: 'push_changes',
-		description: 'Push the changes to the project',
-	},
-	{
-		name: 'done',
-		description: 'The agent is done',
-	},
+	{ name: 'idle', description: 'The agent is idle, awaiting an action.' },
+	{ name: 'container_initializing', description: 'Container is currently being initialized.' },
+	{ name: 'container_ready', description: 'Container is initialized and ready.' },
+	{ name: 'container_check_running', description: 'Running checks on the container.' },
+	{ name: 'container_check_complete', description: 'Container checks are complete.' },
+	{ name: 'issue_detection_running', description: 'Detecting issues in the project.' },
+	{ name: 'issue_detection_complete', description: 'Issue detection is complete.' },
+	{ name: 'issue_fixing_running', description: 'Fixing issues in the project.' },
+	{ name: 'issue_fixing_complete', description: 'Issue fixing is complete.' },
+	{ name: 'changes_committing', description: 'Committing changes.' },
+	{ name: 'changes_committed', description: 'Changes have been committed.' },
+	{ name: 'changes_pushing', description: 'Pushing changes to the remote repository.' },
+	{ name: 'changes_pushed', description: 'Changes have been pushed.' },
+	{ name: 'pr_creating', description: 'Creating pull request.' },
+	{ name: 'pr_created', description: 'Pull request has been created.' },
+	{ name: 'done', description: 'The agent has completed all actions.' },
+	{ name: 'error', description: 'An error occurred in the agent.' },
 ] as const satisfies Array<{
 	name: string
 	description: string
@@ -61,7 +64,7 @@ export class AutofixAgent extends Agent<Env, State> {
 	 * Start the agent
 	 */
 	async start({ repo, branch }: { repo: string; branch: string }) {
-		this.setState({ repo, branch, status: 'idle' })
+		this.setState({ repo, branch, action: 'idle', currentStatus: 'idle' })
 		// TODO: Trigger logic to start the fixing process for the repo
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
