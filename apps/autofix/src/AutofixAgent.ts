@@ -92,14 +92,209 @@ export class AutofixAgent extends Agent<Env, State> {
 	 * Start the agent
 	 */
 	async start({ repo, branch }: { repo: string; branch: string }) {
-		this.setState({ repo, branch, action: 'idle', currentStatus: 'idle' })
-		// TODO: Trigger logic to start the fixing process for the repo
-		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
-		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		console.log(`Agent starting for repo: ${repo}, branch: ${branch}`)
+		// Initialize state. The state is persisted via this.setState().
+		// The durable object itself has this.id for its own ID.
+		await this.setState({ repo, branch, action: 'idle', currentStatus: 'idle' })
 
-		await userContainer.container_initialize(repo)
-		const ls = await userContainer.container_ls()
-		const res = await userContainer.container_ping()
-		return JSON.stringify({ ...ls, res })
+		// Asynchronously kick off the first action processing.
+		// The client that called start() gets an immediate response from the return value below.
+		this.ctx.waitUntil(this.processNextAction())
+
+		// Return value for the Hono app's POST /api/agents/:agentId endpoint
+		return {
+			repo: this.state.repo,
+			branch: this.state.branch,
+			currentStatus: this.state.currentStatus, // will be 'idle'
+			action: this.state.action, // will be 'idle'
+			message: 'AutofixAgent process initiated. Current state polling recommended.',
+		}
+	}
+
+	public async processNextAction(): Promise<void> {
+		const state = this.state // Access in-memory state, kept in sync by Agent SDK
+		if (!state) {
+			console.error('[AutofixAgent] Agent state is not available in processNextAction.')
+			// Consider setting an error state or re-initializing if appropriate
+			return
+		}
+
+		const actionToExecute = getNextAction(state.currentStatus)
+
+		if (actionToExecute === 'idle') {
+			console.log(
+				`[AutofixAgent] Current status '${state.currentStatus}' results in 'idle' next action. No new action taken.`
+			)
+			return
+		}
+
+		const newStatusWhileExecuting = match(actionToExecute)
+			.returnType<AgentStatus>()
+			.with('initialize_container', () => 'container_initializing')
+			.with('check_container', () => 'container_check_running')
+			.with('detect_issues', () => 'issue_detection_running')
+			.with('fix_issues', () => 'issue_fixing_running')
+			.with('commit_changes', () => 'changes_committing')
+			.with('push_changes', () => 'changes_pushing')
+			.with('create_pr', () => 'pr_creating')
+			.with('finish', () => 'done')
+			.exhaustive()
+
+		await this.setState({
+			...state,
+			action: actionToExecute,
+			currentStatus: newStatusWhileExecuting,
+		})
+
+		console.log(
+			`[AutofixAgent] Set state to action: '${actionToExecute}', status: '${newStatusWhileExecuting}'. Dispatching handler.`
+		)
+		this.ctx.waitUntil(this.dispatchActionHandler(actionToExecute))
+	}
+
+	private async dispatchActionHandler(action: AgentAction): Promise<void> {
+		console.log(`[AutofixAgent] Dispatching handler for action: ${action}`)
+		try {
+			await match(action)
+				.with('initialize_container', async () => this.handleInitializeContainer())
+				.with('check_container', async () => this.handleCheckContainer())
+				.with('detect_issues', async () => this.handleDetectIssues())
+				.with('fix_issues', async () => this.handleFixIssues())
+				.with('commit_changes', async () => this.handleCommitChanges())
+				.with('push_changes', async () => this.handlePushChanges())
+				.with('create_pr', async () => this.handleCreatePr())
+				.with('finish', async () => this.handleFinish())
+				.with('idle', () => {
+					console.warn(
+						"[AutofixAgent] dispatchActionHandler called with 'idle'. This should not happen."
+					)
+					return Promise.resolve() // ts-pattern match needs all handlers to return same type (Promise<void>)
+				})
+				.exhaustive() // Ensures all actions are handled
+		} catch (error) {
+			console.error(`[AutofixAgent] Error executing action ${action}:`, error)
+			// Ensure state is available before trying to spread it
+			const currentState = this.state || { repo: '', branch: '' }
+			await this.setState({ ...currentState, currentStatus: 'error', action: 'idle' })
+			// Call processNextAction to allow the system to potentially recover or go to idle based on 'error' status.
+			this.ctx.waitUntil(this.processNextAction())
+		}
+	}
+
+	// --- Placeholder Action Handlers ---
+	// Each handler simulates work, updates status, and triggers the next processing step.
+
+	private async handleInitializeContainer(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handleInitializeContainer')
+		const { repo } = this.state
+		try {
+			// Mock: Simulate container initialization
+			console.log(`[AutofixAgent] Mock: Initializing container for repo: ${repo}`)
+			// const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID);
+			// const userContainer = this.env.USER_CONTAINER.get(userContainerId);
+			// await userContainer.container_initialize(repo); // Actual logic
+			await new Promise((resolve) => setTimeout(resolve, 500)) // Simulate async work
+
+			await this.setState({ ...this.state, currentStatus: 'container_ready' })
+			console.log('[AutofixAgent] Container initialized, status set to container_ready.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to initialize container:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleCheckContainer(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handleCheckContainer')
+		try {
+			console.log('[AutofixAgent] Mock: Checking container...')
+			await new Promise((resolve) => setTimeout(resolve, 500))
+			await this.setState({ ...this.state, currentStatus: 'container_check_complete' })
+			console.log('[AutofixAgent] Container check complete.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to check container:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleDetectIssues(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handleDetectIssues')
+		try {
+			console.log('[AutofixAgent] Mock: Detecting issues...')
+			await new Promise((resolve) => setTimeout(resolve, 500))
+			await this.setState({ ...this.state, currentStatus: 'issue_detection_complete' })
+			console.log('[AutofixAgent] Issue detection complete.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to detect issues:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleFixIssues(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handleFixIssues')
+		try {
+			console.log('[AutofixAgent] Mock: Fixing issues...')
+			await new Promise((resolve) => setTimeout(resolve, 500))
+			await this.setState({ ...this.state, currentStatus: 'issue_fixing_complete' })
+			console.log('[AutofixAgent] Issue fixing complete.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to fix issues:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleCommitChanges(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handleCommitChanges')
+		try {
+			console.log('[AutofixAgent] Mock: Committing changes...')
+			await new Promise((resolve) => setTimeout(resolve, 500))
+			await this.setState({ ...this.state, currentStatus: 'changes_committed' })
+			console.log('[AutofixAgent] Changes committed.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to commit changes:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handlePushChanges(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handlePushChanges')
+		try {
+			console.log('[AutofixAgent] Mock: Pushing changes...')
+			await new Promise((resolve) => setTimeout(resolve, 500))
+			await this.setState({ ...this.state, currentStatus: 'changes_pushed' })
+			console.log('[AutofixAgent] Changes pushed.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to push changes:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleCreatePr(): Promise<void> {
+		console.log('[AutofixAgent] Executing: handleCreatePr')
+		try {
+			console.log('[AutofixAgent] Mock: Creating PR...')
+			await new Promise((resolve) => setTimeout(resolve, 500))
+			await this.setState({ ...this.state, currentStatus: 'pr_created' })
+			console.log('[AutofixAgent] PR created.')
+		} catch (e) {
+			console.error('[AutofixAgent] Failed to create PR:', e)
+			await this.setState({ ...this.state, currentStatus: 'error', action: 'idle' })
+		}
+		this.ctx.waitUntil(this.processNextAction())
+	}
+
+	private async handleFinish(): Promise<void> {
+		// The status is already set to 'done' by processNextAction when 'finish' action is determined.
+		// This handler is mostly for any cleanup or final logging.
+		console.log('[AutofixAgent] Executing: handleFinish. Agent process completed.')
+		// No need to call processNextAction() here as 'done' status will lead to 'idle' action, ending the loop.
+		// However, if there was a theoretical next step after 'done', it would be called.
+		// For safety, and consistency, let's call it. getNextAction('done') returns 'idle', so it's safe.
+		this.ctx.waitUntil(this.processNextAction())
 	}
 }
