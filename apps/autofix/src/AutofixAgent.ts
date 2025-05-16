@@ -1,5 +1,6 @@
 import { Agent } from 'agents'
 import { match, P } from 'ts-pattern'
+import { z } from 'zod'
 
 import type { Env } from './autofix.context'
 
@@ -25,7 +26,10 @@ const AgentActions = [
 	description: string
 }>
 
-type AgentAction = (typeof AgentActions)[number]['name']
+// Create a Zod schema from the names of the agent actions
+const AgentActionSchema = z.enum(AgentActions.map((a) => a.name))
+// Infer the AgentAction type from the Zod schema
+type AgentAction = z.infer<typeof AgentActionSchema>
 
 const AgentStatuses = [
 	{ name: 'idle', description: 'The agent is idle, awaiting an action.' },
@@ -50,7 +54,10 @@ const AgentStatuses = [
 	description: string
 }>
 
-type AgentStatus = (typeof AgentStatuses)[number]['name']
+// Create a Zod schema from the names of the agent statuses
+const AgentStatusSchema = z.enum(AgentStatuses.map((s) => s.name))
+// Infer the AgentStatus type from the Zod schema
+type AgentStatus = z.infer<typeof AgentStatusSchema>
 
 const nextActionMap: Record<AgentStatus, AgentAction> = {
 	// for idle/complete statuses, the agent is ready to start the next action
