@@ -93,122 +93,186 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 	override async onAlarm(): Promise<void> {
 		console.log('[AutofixAgent] Alarm triggered.')
-		// only one alarm can run at a time, so it's
-		// fine if the next action takes > 5 seconds
-		this.setNextAlarm()
+		this.setNextAlarm() // Set next alarm early
 
-		const state = this.state
+		// grab a copy of state before we make any mutations
+		const state = structuredClone(this.state)
 
-		// Timeout check
+		// Timeout check for actions that are 'running'
 		if (state.progress === 'running') {
 			const duration = Date.now() - state.lastStatusUpdateTimestamp
 			if (duration > TIMEOUT_DURATION_MS) {
 				const timeoutMessage = `Action '${state.currentAction}' timed out after ${Math.round(duration / 1000)}s.`
 				console.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
+				// Mark the timed-out action as failed
 				this.setActionOutcome({ progress: 'failed', error: new Error(timeoutMessage) })
+
+				// Update state to immediately run handle_error for the timeout
+				// It's important to get the latest state via this.state after setActionOutcome
 				this.setState({
 					...this.state,
 					currentAction: 'handle_error',
-					progress: 'running', // The handle_error action is now running
+					progress: 'running',
 					lastStatusUpdateTimestamp: Date.now(),
+					// errorDetails should have been set by setActionOutcome
 				})
-
-				// Dispatch the handle_error action instead of using getNextAction logic
-				await this.dispatchActionHandler('handle_error')
-				return
+				console.log(
+					`[AutofixAgent] Transitioning to action: 'handle_error' due to timeout. Dispatching handler.`
+				)
+				await this.handleError() // Directly call handleError
+				return // End processing for this alarm cycle
 			}
 		}
 
-		const actionToExecute = match({ currentAction: state.currentAction, progress: state.progress })
-			.returnType<AgentAction>()
-			// Initial kick-off
-			.with({ currentAction: 'idle', progress: 'idle' }, () => 'initialize_container')
-			// Successful stage transitions
-			.with({ currentAction: 'initialize_container', progress: 'success' }, () => 'detect_issues')
-			.with({ currentAction: 'detect_issues', progress: 'success' }, () => 'fix_issues')
-			.with({ currentAction: 'fix_issues', progress: 'success' }, () => 'commit_changes')
-			.with({ currentAction: 'commit_changes', progress: 'success' }, () => 'push_changes')
-			.with({ currentAction: 'push_changes', progress: 'success' }, () => 'create_pr')
-			.with({ currentAction: 'create_pr', progress: 'success' }, () => 'finish')
-			.with({ currentAction: 'finish', progress: 'success' }, () => 'idle')
-			.with({ currentAction: 'handle_error', progress: 'success' }, () => 'idle')
-			// If any stage fails, transition to handle_error
-			.when(
-				(s) => s.progress === 'failed',
-				() => 'handle_error'
-			)
-			// Default case for any other combination (e.g., running, pending,
-			// or 'idle' stage with 'success'/'failed' progress if not caught above, though 'failed' is).
-			// These should result in an 'idle' action, meaning the agent waits.
-			.otherwise(() => 'idle')
-
-		if (actionToExecute === 'idle') {
-			console.log(
-				`[AutofixAgent] Current action '${state.currentAction}' with progress '${state.progress}' results in 'idle' next action. No new action initiated.`
-			)
-			// Ensure timestamp is updated if we are settling into idle from a completed stage
-			if (
-				(state.currentAction === 'finish' || state.currentAction === 'handle_error') &&
-				state.progress === 'success'
-			) {
+		// Main state machine logic using ts-pattern
+		await match(state)
+			.returnType<Promise<void>>() // All branches will execute async logic or be async
+			// Initial kick-off from idle
+			.with({ currentAction: 'idle', progress: 'idle' }, async () => {
+				const nextAction: AgentAction = 'initialize_container'
 				this.setState({
-					...state,
-					currentAction: 'idle',
-					progress: 'idle',
-					errorDetails: undefined,
+					...this.state, // Use this.state to get latest after potential prior modifications in same cycle (e.g. timeout)
+					currentAction: nextAction,
+					progress: 'running',
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 				console.log(
-					'[AutofixAgent] Process cycle ended (finish/error handled). Agent is now truly idle.'
+					`[AutofixAgent] Transitioning from 'idle' to action: '${nextAction}'. Dispatching handler.`
 				)
-			}
-			// If actionToExecute is 'idle', we simply do nothing further in this processing cycle.
-			return
-		}
-
-		this.setState({
-			...state,
-			currentAction: actionToExecute,
-			progress: 'running',
-			lastStatusUpdateTimestamp: Date.now(),
-		})
-		console.log(
-			`[AutofixAgent] Transitioning to action: '${actionToExecute}', progress: 'running'. Dispatching handler.`
-		)
-		await this.dispatchActionHandler(actionToExecute)
-	}
-
-	private async dispatchActionHandler(action: AgentAction): Promise<void> {
-		console.log(`[AutofixAgent] Dispatching handler for action: ${action}`)
-		try {
-			// Note: lastStatusUpdateTimestamp is set before dispatching, so handlers don't need to set it at their start.
-			await match(action)
-				.with('initialize_container', async () => this.handleInitializeContainer())
-				.with('detect_issues', async () => this.handleDetectIssues())
-				.with('fix_issues', async () => this.handleFixIssues())
-				.with('commit_changes', async () => this.handleCommitChanges())
-				.with('push_changes', async () => this.handlePushChanges())
-				.with('create_pr', async () => this.handleCreatePr())
-				.with('finish', async () => this.handleFinish())
-				.with('handle_error', async () => this.handleError()) // Renamed from 'error'
-				.with('idle', async () => {
-					// Should ideally not be dispatched, but handle defensively
-					console.error(
-						"[AutofixAgent] dispatchActionHandler called with 'idle'. Setting to idle progress."
-					)
-					if (this.state.currentAction === 'idle' && this.state.progress !== 'idle') {
-						this.setState({
-							...this.state,
-							progress: 'idle',
-							errorDetails: undefined,
-							lastStatusUpdateTimestamp: Date.now(),
-						})
-					}
+				await this.handleInitializeContainer()
+			})
+			// Successful stage transitions - each will set state and call the next handler
+			.with({ currentAction: 'initialize_container', progress: 'success' }, async () => {
+				const nextAction: AgentAction = 'detect_issues'
+				this.setState({
+					...this.state,
+					currentAction: nextAction,
+					progress: 'running',
+					lastStatusUpdateTimestamp: Date.now(),
 				})
-				.exhaustive()
-		} catch (err) {
-			this.setActionOutcome({ progress: 'failed', error: err })
-		}
+				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
+				await this.handleDetectIssues()
+			})
+			.with({ currentAction: 'detect_issues', progress: 'success' }, async () => {
+				const nextAction: AgentAction = 'fix_issues'
+				this.setState({
+					...this.state,
+					currentAction: nextAction,
+					progress: 'running',
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
+				await this.handleFixIssues()
+			})
+			.with({ currentAction: 'fix_issues', progress: 'success' }, async () => {
+				const nextAction: AgentAction = 'commit_changes'
+				this.setState({
+					...this.state,
+					currentAction: nextAction,
+					progress: 'running',
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
+				await this.handleCommitChanges()
+			})
+			.with({ currentAction: 'commit_changes', progress: 'success' }, async () => {
+				const nextAction: AgentAction = 'push_changes'
+				this.setState({
+					...this.state,
+					currentAction: nextAction,
+					progress: 'running',
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
+				await this.handlePushChanges()
+			})
+			.with({ currentAction: 'push_changes', progress: 'success' }, async () => {
+				const nextAction: AgentAction = 'create_pr'
+				this.setState({
+					...this.state,
+					currentAction: nextAction,
+					progress: 'running',
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
+				await this.handleCreatePr()
+			})
+			.with({ currentAction: 'create_pr', progress: 'success' }, async () => {
+				const nextAction: AgentAction = 'finish'
+				this.setState({
+					...this.state,
+					currentAction: nextAction,
+					progress: 'running',
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+				console.log(`[AutofixAgent] Transitioning to action: '${nextAction}'. Dispatching handler.`)
+				await this.handleFinish()
+			})
+			// Transitions to idle state (no further handler call within this cycle)
+			.with({ currentAction: 'finish', progress: 'success' }, async () => {
+				console.log("[AutofixAgent] 'finish' action successful. Transitioning to 'idle'.")
+				this.setState({
+					...this.state,
+					currentAction: 'idle',
+					progress: 'idle',
+					errorDetails: undefined, // Clear error details on successful finish
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+			})
+			.with({ currentAction: 'handle_error', progress: 'success' }, async () => {
+				console.log("[AutofixAgent] 'handle_error' action successful. Transitioning to 'idle'.")
+				this.setState({
+					...this.state,
+					currentAction: 'idle',
+					progress: 'idle',
+					errorDetails: undefined, // Clear error details after successful error handling
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+			})
+			// If any stage fails (and it's not handle_error itself), transition to handle_error
+			.when(
+				(s) => s.progress === 'failed' && s.currentAction !== 'handle_error',
+				async (s) => {
+					console.log(
+						`[AutofixAgent] Action '${s.currentAction}' failed. Transitioning to 'handle_error'. Error details should be set.`
+					)
+					// errorDetails should have been set by setActionOutcome when the original action failed
+					this.setState({
+						...this.state, // Get fresh state, errorDetails might be set
+						currentAction: 'handle_error',
+						progress: 'running',
+						lastStatusUpdateTimestamp: Date.now(),
+					})
+					await this.handleError()
+				}
+			)
+			// If handle_error itself fails, transition to idle to prevent loops
+			.with({ currentAction: 'handle_error', progress: 'failed' }, async () => {
+				console.error(
+					"[AutofixAgent] 'handle_error' action itself FAILED. Transitioning to 'idle' to prevent loop. Error details preserved."
+				)
+				this.setState({
+					...this.state,
+					currentAction: 'idle',
+					progress: 'idle',
+					// errorDetails from the failed handleError are preserved
+					lastStatusUpdateTimestamp: Date.now(),
+				})
+			})
+			// Default case: current action is 'running', 'pending', or an unhandled idle combination.
+			// This means no state transition in this cycle, agent waits.
+			.otherwise(async () => {
+				console.log(
+					`[AutofixAgent] No state transition for current action '${state.currentAction}' with progress '${state.progress}'. Agent waits.`
+				)
+				// If truly idle (e.g. idle/idle, which should have been caught by the first .with clause)
+				// or if a state like (running/pending) persists, we might update timestamp to prevent premature timeout detection
+				// if an action is genuinely long-running and setNextAlarm is very short.
+				// However, lastStatusUpdateTimestamp is primarily for tracking start of current action's 'running' state.
+				// If we are in 'idle'/'idle' and nothing happened, it implies the first rule was missed, which is an error.
+				// If we are 'foo'/'running', we just wait for it to complete.
+				// No specific state change here; the alarm will trigger again.
+			})
 	}
 
 	private setActionOutcome(
