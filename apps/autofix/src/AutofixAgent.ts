@@ -34,7 +34,7 @@ const AgentAction = z.enum(AgentActions.map((a) => a.name))
 type AgentAction = z.infer<typeof AgentAction>
 
 // progress status for an action/stage
-const ProgressStatus = z.enum(['idle', 'pending', 'in-progress', 'success', 'failed'])
+const ProgressStatus = z.enum(['idle', 'pending', 'running', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
 const TIMEOUT_DURATION_MS = ms('10 minutes')
@@ -71,7 +71,7 @@ function getNextAction(currentStage: AgentAction, progress: ProgressStatus): Age
 				() => 'handle_error'
 			)
 
-			// Default case for any other combination (e.g., in-progress, pending,
+			// Default case for any other combination (e.g., running, pending,
 			// or 'idle' stage with 'success'/'failed' progress if not caught above, though 'failed' is).
 			// These should result in an 'idle' action, meaning the agent waits.
 			.otherwise(() => 'idle')
@@ -138,7 +138,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		}
 
 		// Timeout check
-		if (state.progress === 'in-progress') {
+		if (state.progress === 'running') {
 			const duration = Date.now() - state.lastStatusUpdateTimestamp
 			if (duration > TIMEOUT_DURATION_MS) {
 				const timeoutMessage = `Action '${state.currentActionStage}' timed out after ${Math.round(duration / 1000)}s.`
@@ -146,7 +146,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				this.setState({
 					...state,
 					currentActionStage: 'handle_error',
-					progress: 'in-progress', // The handle_error action is now in-progress
+					progress: 'running', // The handle_error action is now running
 					errorDetails: { message: timeoutMessage, failedStage: state.currentActionStage },
 					lastStatusUpdateTimestamp: Date.now(),
 				})
@@ -184,12 +184,12 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.setState({
 			...state,
 			currentActionStage: actionToExecute,
-			progress: 'in-progress',
+			progress: 'running',
 			lastStatusUpdateTimestamp: Date.now(), // Update timestamp when a new action starts
 		})
 
 		console.log(
-			`[AutofixAgent] Transitioning to stage: '${actionToExecute}', progress: 'in-progress'. Dispatching handler.`
+			`[AutofixAgent] Transitioning to stage: '${actionToExecute}', progress: 'running'. Dispatching handler.`
 		)
 		await this.dispatchActionHandler(actionToExecute)
 	}
