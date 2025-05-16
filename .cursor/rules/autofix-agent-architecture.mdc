@@ -1,0 +1,53 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# AutofixAgent Architecture Overview
+
+This document outlines the architecture of the `AutofixAgent`, located in [`apps/autofix/src/AutofixAgent.ts`](mdc:apps/autofix/src/AutofixAgent.ts). The agent is designed to automate fixes in Cloudflare Workers projects.
+
+**Core Components & Logic:**
+
+*   **`AutofixAgent` Class:** The primary class extending `Agent` from the Cloudflare Agents SDK. It manages the agent's lifecycle and state.
+*   **State Management:**
+    *   `AgentState`: A type defining the agent's state, including `repo`, `branch`, `currentAction` (of type `AgentAction`), `progress` (of type `ProgressStatus`), `lastStatusUpdateTimestamp`, and optional `errorDetails`.
+    *   `AgentAction`: A Zod enum representing the main operational stages of the agent (e.g., `idle`, `initialize_container`, `detect_issues`, `fix_issues`, `handle_error`).
+    *   `ProgressStatus`: A Zod enum representing the progress of an action (`idle`, `running`, `success`, `failed`).
+    *   State is persisted using `this.setState()`.
+*   **Alarm-Driven Processing:**
+    *   The agent's main work loop is triggered by alarms managed via `this.ctx.storage.setAlarm()` and handled by the `onAlarm()` method.
+    *   `setNextAlarm()` is used to schedule subsequent alarms.
+*   **`onAlarm()` Method:** This is the heart of the agent. It contains:
+    *   A timeout check for actions that run too long.
+    *   A local helper function `setRunning(newAction: AgentAction)` to transition an action to the 'running' state (updates `currentAction`, `progress`, `lastStatusUpdateTimestamp` via `setState`, and logs the transition).
+    *   A state machine implemented using `ts-pattern` (`match(...)`). This `match` statement takes the current `state.currentAction` and `state.progress` to determine the next operation.
+    *   Callbacks within the `match` statement directly invoke action handlers (e.g., `await this.handleInitializeContainer()`) after setting the appropriate running state using the `setRunning` helper or manage final state transitions to 'idle'.
+    *   The `match` statement is designed to be `.exhaustive()` to ensure all state combinations are handled.
+*   **Action Handlers (`handle[ActionName]()`):**
+    *   Private `async` methods corresponding to most `AgentAction` values (e.g., `handleInitializeContainer`, `handleDetectIssues`, `handleError`).
+    *   These handlers perform the primary logic for each stage of the agent's operation.
+    *   Upon completion (success or failure), they call `this.setActionOutcome()` to update the `progress` of the current action and potentially `errorDetails`.
+*   **`setActionOutcome()` Method:** A helper method to standardize the setting of `progress` (`success` or `failed`) and `lastStatusUpdateTimestamp`. It also sets `errorDetails` if an action fails and clears them on success.
+*   **Logging:**
+    *   The agent uses a `logger` instance (presumably `workers-tagged-logger`) initialized in the constructor and tagged with agent state.
+    *   Methods are decorated with `@WithLogTags` for contextual logging.
+    *   `console.error` and `console.warn` are also used for specific error/warning conditions.
+
+**Key Workflow Patterns:**
+
+1.  **Start:** The `start()` method initializes the agent's state to `idle` and schedules the first alarm.
+2.  **Alarm Trigger:** `onAlarm()` is invoked.
+3.  **Timeout Check:** If the current action has been `running` for too long, it's marked as `failed`, and the agent transitions to `handle_error`.
+4.  **State Matching:** The `match` statement evaluates the current action and progress:
+    *   If `idle/idle`, it transitions to `initialize_container` (sets state via `setRunning` and calls `handleInitializeContainer`).
+    *   If `action_X/success`, it transitions to `action_Y` (sets state via `setRunning` and calls `handleActionY`).
+    *   If `finish/success` or `handle_error/success`, it transitions to `idle/idle` (calls `setState`).
+    *   If `action_X/failed` (and `action_X` is not `handle_error`), it transitions to `handle_error` (calls `setState` to set `handle_error` as running, then calls `handleError`).
+    *   If `handle_error/failed`, it transitions to `idle/idle` to prevent loops.
+    *   For other states (e.g., an action is `running`, or an anomalous state is detected), it logs the situation and waits for the next alarm.
+5.  **Action Execution:** The relevant `handle...()` method executes its logic.
+6.  **Outcome Setting:** The handler calls `setActionOutcome()` with `success` or `failed`.
+7.  **Loop:** The next alarm triggers `onAlarm()`, and the cycle repeats based on the new state.
+
+This architecture aims for a clear, robust, and maintainable state machine for the AutofixAgent.
