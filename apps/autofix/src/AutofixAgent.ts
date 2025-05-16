@@ -307,16 +307,16 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					),
 					progress: P.union('failed', 'pending'), // Combined 'failed' and 'pending' states
 				},
-				async (matchedState) => {
-					if (matchedState.currentActionAttempts < MAX_ACTION_ATTEMPTS) {
+				async ({ currentAction, currentActionAttempts, progress }) => {
+					if (currentActionAttempts < MAX_ACTION_ATTEMPTS) {
 						this.logger.info(
-							`[AutofixAgent] Retrying action '${matchedState.currentAction}' (state: ${matchedState.progress}), upcoming attempt ${matchedState.currentActionAttempts + 1} of ${MAX_ACTION_ATTEMPTS}.`
+							`[AutofixAgent] Retrying action '${currentAction}' (state: ${progress}), upcoming attempt ${currentActionAttempts + 1} of ${MAX_ACTION_ATTEMPTS}.`
 						)
-						const handler = this.getActionHandler(matchedState.currentAction)
+						const handler = this.getActionHandler(currentAction)
 						if (handler) {
-							await runActionHandler(matchedState.currentAction, handler)
+							await runActionHandler(currentAction, handler)
 						} else {
-							const errMsg = `[AutofixAgent] Critical: No handler found for action '${matchedState.currentAction}' during retry.`
+							const errMsg = `[AutofixAgent] Critical: No handler found for action '${currentAction}' during retry.`
 							this.logger.error(errMsg)
 							// Force definitive failure and transition to handle_error
 							this.setActionOutcome({ progress: 'failed', error: new Error(errMsg) })
@@ -324,7 +324,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						}
 					} else {
 						this.logger.info(
-							`[AutofixAgent] Action '${matchedState.currentAction}' (state: ${matchedState.progress}) failed after ${matchedState.currentActionAttempts} attempts. Transitioning to 'handle_error'.`
+							`[AutofixAgent] Action '${currentAction}' (state: ${progress}) failed after ${currentActionAttempts} attempts. Transitioning to 'handle_error'.`
 						)
 						// errorDetails should have been set by the last setActionOutcome call or interruption handling.
 						await runActionHandler('handle_error', () => this.handleError())
