@@ -260,7 +260,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Agent waits.`
 				)
 			})
-			.exhaustive() // Ensures all combinations are handled
+			.exhaustive()
 	}
 
 	private setActionOutcome(
