@@ -313,9 +313,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					return
 				}
 
-				const nextStepOutcome = this.handleActionSuccess()
+				const nextActionName = this.handleActionSuccess()
 
-				if (nextStepOutcome === AGENT_SEQUENCE_END) {
+				if (nextActionName === AGENT_SEQUENCE_END) {
 					this.logger.info(
 						`[AutofixAgent] Action '${currentSuccessfulAction}' marked sequence end via handleActionSuccess. Transitioning to 'done'.`
 					)
@@ -325,11 +325,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						currentActionAttempts: 0,
 						errorDetails: undefined,
 					})
-				} else if (nextStepOutcome) {
-					const nextActionName = nextStepOutcome as HandledAgentActions
-					const handlerNameString = getActionHandlerName(nextActionName)
-
-					await runActionHandler(nextActionName, () => this[handlerNameString]())
+				} else if (nextActionName) {
+					await runActionHandler(nextActionName, () => this[getActionHandlerName(nextActionName)]())
 				} else {
 					this.logger.info(
 						`[AutofixAgent] Action '${currentSuccessfulAction}' succeeded, but no next action defined in sequence by handleActionSuccess. Transitioning to idle.`
