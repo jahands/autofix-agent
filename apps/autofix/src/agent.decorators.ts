@@ -39,7 +39,7 @@ interface AgentWithStateForSequence {
 
 // Main setup function that returns the decorator and helper
 export function setupAgentWorkflow<
-	const TAllHandledActions extends ReadonlyArray<HandledAgentActions>,
+	const TAllHandledActions extends readonly HandledAgentActions[],
 	const TSequenceConfig extends ActionSequenceConfig,
 >(
 	handledActionsList: TAllHandledActions, // Renamed for clarity from handledActions
@@ -57,29 +57,29 @@ export function setupAgentWorkflow<
 		return `handle${pascalCasedAction}` as ActionToHandlerName<typeof actionName>
 	}
 
-	// The class decorator
+	// The class decorator, now conforming to ES Decorator signature
 	const ConfigureAgentWorkflow = function <
 		TInstance extends AgentWithStateForSequence & {
 			// This mapped type enforces that for each action name in the TAllHandledActions tuple,
 			// the class instance must have a method with the derived handler name,
 			// and that method must match the expected signature: () => Promise<void>.
 			[K in TAllHandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
-		} & { [key: string]: any }, // Added [key: string]: any for dynamic access if needed
-		TargetClass extends new (...args: any[]) => TInstance,
-	>(target: TargetClass): TargetClass | void {
-		// Phase 2a: Decorator is primarily for type-checking handlers and being aware of the sequence.
-		// It doesn't yet generate or modify runtime behavior based on sequenceConfig.
+		} & { [key: string]: any }, // Index signature for dynamic access
+		Ctor extends new (...args: any[]) => TInstance, // Ctor is the class constructor type
+	>(
+		value: Ctor, // The class constructor itself
+		context: ClassDecoratorContext // ES Decorator context
+	): Ctor | void {
+		// Decorator can return the original/new constructor or void
 
-		// Example of a potential type-level check (conceptual, actual implementation might differ or be complex):
-		// type IsValidSequence<Seq extends ActionSequenceConfig, Handled extends HandledAgentActions> = {
-		//     [K in keyof Seq]: Seq[K] extends HandledAgentActions ? (Seq[K] extends Handled ? true : false) : true;
-		// };
-		// type Check = IsValidSequence<TSequenceConfig, TAllHandledActions[number]>;
-		// This is a placeholder for where more advanced type validation of the sequence could go.
+		// Ensure the context kind is 'class' for safety, though it will be for a class decorator
+		if (context.kind !== 'class') {
+			throw new Error('ConfigureAgentWorkflow must be used as a class decorator.')
+		}
 
 		// Add the handleActionSuccess method to the prototype of the decorated class
-		target.prototype.handleActionSuccess = function (
-			this: TInstance
+		value.prototype.handleActionSuccess = function (
+			this: TInstance // `this` will be an instance of the decorated class
 		): NextActionOutcome | undefined {
 			const currentAction = this.state.currentAction as HandledAgentActions // Cast needed as currentAction can be 'idle'
 
@@ -113,7 +113,10 @@ export function setupAgentWorkflow<
 			return undefined
 		}
 
-		return target // Standard decorator practice is to return the target or a new constructor
+		// Type checking for handler existence (compile-time, ensured by generic constraints on Ctor)
+		// No specific runtime checks for handler methods added here, relying on TS for that.
+
+		return value // Return the original (now modified) constructor
 	}
 
 	return {
