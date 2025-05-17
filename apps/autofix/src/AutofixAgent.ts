@@ -83,8 +83,10 @@ const autofixAgentSequence: ActionSequenceConfig = {
 }
 
 // Call the setup function and destructure its return
-const { ConfigureAgentWorkflow, getActionHandlerName: getAgentActionHandlerName } =
-	setupAgentWorkflow(autofixAgentHandledActions, autofixAgentSequence)
+const { ConfigureAgentWorkflow, getActionHandlerName } = setupAgentWorkflow(
+	autofixAgentHandledActions,
+	autofixAgentSequence
+)
 
 @ConfigureAgentWorkflow
 export class AutofixAgent extends Agent<Env, AgentState> {
@@ -325,25 +327,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					})
 				} else if (nextStepOutcome) {
 					const nextActionName = nextStepOutcome as HandledAgentActions
-					const handlerNameString = getAgentActionHandlerName(nextActionName)
+					const handlerNameString = getActionHandlerName(nextActionName)
 
-					// Type assertion needed because TS doesn't statically know that this[handlerNameString] is the correct method.
-					// The decorator's type checking provides the actual safety.
-					if (typeof (this as any)[handlerNameString] === 'function') {
-						await runActionHandler(nextActionName, () =>
-							((this as any)[handlerNameString] as () => Promise<void>)()
-						)
-					} else {
-						this.logger.error(
-							`[AutofixAgent] CRITICAL: Handler method '${handlerNameString}' not found for action '${nextActionName}'. Transitioning to idle.`
-						)
-						this.setState({
-							...this.state,
-							currentAction: 'idle',
-							progress: 'idle',
-							currentActionAttempts: 0,
-						})
-					}
+					await runActionHandler(nextActionName, () => this[handlerNameString]())
 				} else {
 					this.logger.info(
 						`[AutofixAgent] Action '${currentSuccessfulAction}' succeeded, but no next action defined in sequence by handleActionSuccess. Transitioning to idle.`
