@@ -16,7 +16,7 @@ This document outlines the architecture of the `AutofixAgent`, located in [`apps
         *   `branch: string`
         *   `currentAction: AgentAction` (Zod enum representing lifecycle stages: `idle`, `initialize_container`, `detect_issues`, `fix_issues`, `commit_changes`, `push_changes`, `create_pr`, `finish`, `handle_error`).
         *   `currentActionAttempts: number` (1-indexed number of the current attempt for an active action; `0` if the agent is `idle`).
-        *   `progress: ProgressStatus` (Zod enum: `idle`, `pending`, `running`, `success`, `failed`). `'pending'` indicates an action is ready to be (re)tried.
+        *   `progress: ProgressStatus` (Zod enum: `idle`, `retry`, `running`, `success`, `failed`). `'retry'` indicates an action is ready to be (re)tried.
         *   `lastStatusUpdateTimestamp: number`
         *   `errorDetails?: { message: string; failedAction: AgentAction }` (optional context for errors).
     *   State is persisted using `this.setState()`.
@@ -34,13 +34,13 @@ This document outlines the architecture of the `AutofixAgent`, located in [`apps
 
 *   **Interruption Check:**
     *   At the start, if `this.state.progress === 'running'` and `this.currentActionPromise === undefined`, it assumes the Durable Object may have restarted during the action.
-    *   It sets the `progress` of `this.state.currentAction` to `'pending'`, preserving its `currentActionAttempts` (which holds the number of the interrupted attempt), and updates `errorDetails`. The main `match` statement will then handle this `'pending'` state.
+    *   It sets the `progress` of `this.state.currentAction` to `'retry'`, preserving its `currentActionAttempts` (which holds the number of the interrupted attempt), and updates `errorDetails`. The main `match` statement will then handle this `'retry'` state.
 *   `setNextAlarm()` is called early in the `onAlarm` execution.
 *   **Local Helper Functions (defined within `onAlarm`):**
     *   `setRunning(newAction: AgentAction)`:
         *   Determines the `attemptNumberOfUpcomingRun` for `newAction`:
             *   It's `1` if `newAction` is a new type of action (different from `currentState.currentAction`) or if the agent is starting its very first action from an overall `idle` state.
-            *   It's `currentState.currentActionAttempts + 1` if `newAction` is the same as `currentState.currentAction` (i.e., it's a retry of an action that was `pending`).
+            *   It's `currentState.currentActionAttempts + 1` if `newAction` is the same as `currentState.currentAction` (i.e., it's a retry of an action that was in a `'retry'` state).
         *   Updates the agent's state: `currentAction` to `newAction`, `progress` to `'running'`, and `currentActionAttempts` to `attemptNumberOfUpcomingRun`.
         *   Logs the start of the action with its attempt number.
     *   `runActionHandler(actionToRun: AgentAction, callback: () => Promise<void>)`:
@@ -59,40 +59,40 @@ This document outlines the architecture of the `AutofixAgent`, located in [`apps
             *   `onAlarm` then returns.
         *   Otherwise (retries are still available after the timeout):
             *   Logs that a retry will occur. The action is now in a `'failed'` state.
-            *   `onAlarm` then returns. The next alarm cycle's `match` statement will see the `'failed'` state and transition it to `'pending'`.
+            *   `onAlarm` then returns. The next alarm cycle's `match` statement will see the `'failed'` state and transition it to `'retry'`.
 *   **State Machine (using `ts-pattern`'s `match` on `this.state`):**
     *   **Sequential Transitions & Pending Retries:** The primary way actions are started or retried. Uses combined clauses:
         *   Example:
             ```typescript
             .with(
                 { currentAction: 'previous_action_name', progress: 'success' }, // Previous completed
-                { currentAction: 'current_action_name', progress: 'pending' },  // OR current is pending
+                { currentAction: 'current_action_name', progress: 'retry' },  // OR current is marked for retry
                 async () => {
                     await runActionHandler('current_action_name', () => this.handleCurrentActionName());
                 }
             )
             ```
         *   This pattern is applied for all steps:
-            *   (`idle/idle` OR `initialize_container/pending`) -> run `initialize_container`
-            *   (`initialize_container/success` OR `detect_issues/pending`) -> run `detect_issues`
+            *   (`idle/idle` OR `initialize_container/retry`) -> run `initialize_container`
+            *   (`initialize_container/success` OR `detect_issues/retry`) -> run `detect_issues`
             *   ... and so on, up to ...
-            *   (`create_pr/success` OR `finish/pending`) -> run `finish`
+            *   (`create_pr/success` OR `finish/retry`) -> run `finish`
     *   **`finish/success`**: Transitions to `idle/idle` state by calling `this.setState()` (clears `errorDetails`, sets `currentActionAttempts` to `0`).
     *   **`handle_error/success`**: Transitions to `idle/idle` state similarly (clears `errorDetails` if error handling was itself successful, sets `currentActionAttempts` to `0`).
     *   **Generic Failed Action Handler (`currentAction: P.not(P.union('idle', 'handle_error')), progress: 'failed'`)**:
         *   This handles actions that fail and weren't caught by a timeout leading directly to `handle_error`.
         *   If `this.state.currentActionAttempts < MAX_ACTION_ATTEMPTS`:
-            *   Logs the failure and that it's transitioning to `'pending'`.
-            *   Calls `this.setState()` to change `progress` to `'pending'`. `currentActionAttempts` (which holds the number of the just-failed attempt) and `errorDetails` are preserved. The action will be retried on the next alarm via the combined clauses mentioned above.
+            *   Logs the failure and that it's transitioning to `'retry'`.
+            *   Calls `this.setState()` to change `progress` to `'retry'`. `currentActionAttempts` (which holds the number of the just-failed attempt) and `errorDetails` are preserved. The action will be retried on the next alarm via the combined clauses mentioned above.
         *   Else (if `this.state.currentActionAttempts >= MAX_ACTION_ATTEMPTS`):
             *   Logs that max attempts are reached.
             *   Calls `await runActionHandler('handle_error', () => this.handleError())`.
-    *   **`handle_error/pending`**: If `handle_error` itself was interrupted, this clause calls `await runActionHandler('handle_error', () => this.handleError())` to retry it.
+    *   **`handle_error/retry`**: If `handle_error` itself was interrupted and is now in a retry state, this clause calls `await runActionHandler('handle_error', () => this.handleError())` to retry it.
     *   **`handle_error/failed`**: If `handle_error` fails, logs a critical error and calls `this.setState()` to transition to `idle/idle` to prevent loops, preserving `errorDetails` and setting `currentActionAttempts` to `0`.
     *   **`.../running`**: If an action is `running` (and hasn't timed out or been interrupted), it logs this and waits for the next alarm.
     *   **Anomalous States**:
         *   `idle` with `progress` other than `idle`: Logs a warning, sets state to `idle/idle`, `currentActionAttempts: 0`.
-        *   Non-`idle` action with `progress: 'idle'`: Logs a warning, sets the action's `progress` to `'pending'` (preserving `currentActionAttempts`), and updates `errorDetails` to note the anomalous recovery. This allows the standard retry mechanism to pick it up.
+        *   Non-`idle` action with `progress: 'idle'`: Logs a warning, sets the action's `progress` to `'retry'` (preserving `currentActionAttempts`), and updates `errorDetails` to note the anomalous recovery. This allows the standard retry mechanism to pick it up.
     *   The `match` statement is `.exhaustive()`.
 
 **Action Handlers (`handle[ActionName]()`):**
@@ -127,12 +127,12 @@ This document outlines the architecture of the `AutofixAgent`, located in [`apps
 **Key Workflow Patterns:**
 
 1.  **Start:** `start()` method initializes state to `repo/branch/idle/idle/attempts:0` and schedules the first alarm.
-2.  **Alarm & Interruption/Timeout:** `onAlarm()` triggers. Checks for interruptions or timeouts. If an action is ongoing and gets interrupted, its state becomes `pending`. If it times out, `setActionOutcome` marks it `failed`. If a timeout leads to max attempts, `handle_error` is invoked directly.
+2.  **Alarm & Interruption/Timeout:** `onAlarm()` triggers. Checks for interruptions or timeouts. If an action is ongoing and gets interrupted, its state becomes `retry`. If it times out, `setActionOutcome` marks it `failed`. If a timeout leads to max attempts, `handle_error` is invoked directly.
 3.  **State Matching (`match` in `onAlarm`):**
-    *   If `idle/idle` OR `initialize_container/pending`, it calls `runActionHandler('initialize_container', ...)` (attempt 1 or retry).
-    *   If `action_X/success` OR `action_Y/pending`, it calls `runActionHandler('action_Y', ...)` (next step or retry).
+    *   If `idle/idle` OR `initialize_container/retry`, it calls `runActionHandler('initialize_container', ...)` (attempt 1 or retry).
+    *   If `action_X/success` OR `action_Y/retry`, it calls `runActionHandler('action_Y', ...)` (next step or retry).
     *   If `action_X/failed` (and not `idle` or `handle_error`):
-        *   If attempts remaining: sets `action_X` to `pending`. Next alarm cycle will trigger retry via the combined clause.
+        *   If attempts remaining: sets `action_X` to `retry`. Next alarm cycle will trigger retry via the combined clause.
         *   Else: calls `runActionHandler('handle_error', ...)`.
     *   `finish/success` or `handle_error/success` transitions to `idle/idle`.
     *   `handle_error/failed` transitions to `idle/idle` (preserving error details).
