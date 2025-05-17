@@ -14,7 +14,7 @@ import {
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
-import { WithLogTags } from 'workers-tagged-logger'
+import { WithLogTags } from 'workers-tagged-logger/ts5'
 
 // define the main actions/stages of the agent
 const AgentActions = [
