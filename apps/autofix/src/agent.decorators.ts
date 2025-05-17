@@ -17,7 +17,7 @@ type PascalCase<S extends string> = S extends `${infer P1}_${infer P2}`
 export type ActionToHandlerName<A extends HandledAgentActions> = `handle${PascalCase<A>}`
 
 // The Decorator Function
-export function EnsureActionHandlers<const TActions extends ReadonlyArray<HandledAgentActions>>(
+export function EnsureActionHandlers<const TActions extends readonly HandledAgentActions[]>(
 	actions: TActions
 ) {
 	// `const` helps infer TActions as a literal tuple type
