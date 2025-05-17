@@ -41,7 +41,7 @@ type AgentAction = z.infer<typeof AgentAction>
 const ProgressStatus = z.enum(['idle', 'retry', 'running', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
-const TIMEOUT_DURATION_MS = ms('10 minutes')
+// MAX_ACTION_ATTEMPTS is back, TIMEOUT_DURATION_MS remains removed
 const MAX_ACTION_ATTEMPTS = 3
 
 type AgentState = {
@@ -82,6 +82,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				repo: this.state.repo,
 				branch: this.state.branch,
 				currentAction: this.state.currentAction,
+				currentActionAttempts: this.state.currentActionAttempts, // Restored
 				progress: this.state.progress,
 				errorDetails: this.state.errorDetails,
 				lastStatusUpdateTimestamp: this.state.lastStatusUpdateTimestamp,
@@ -99,7 +100,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			repo,
 			branch,
 			currentAction: 'idle',
-			currentActionAttempts: 0,
+			currentActionAttempts: 0, // Restored
 			progress: 'idle',
 			errorDetails: undefined,
 			lastStatusUpdateTimestamp: Date.now(),
@@ -136,22 +137,42 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		// Interruption Check: Detect if DO might have restarted during an action
 		if (this.state.progress === 'running' && this.currentActionPromise === undefined) {
 			const interruptedAction = this.state.currentAction
-			const interruptionMessage = `Action '${interruptedAction}' attempt ${this.state.currentActionAttempts} may have been interrupted by a restart. Treating as a failed attempt.`
+			const attemptOfInterruptedAction = this.state.currentActionAttempts
+			const interruptionMessage = `Action '${interruptedAction}' attempt ${attemptOfInterruptedAction} may have been interrupted by a restart.`
 			this.logger.warn(`[AutofixAgent] Interruption: ${interruptionMessage}`)
 
-			// currentActionAttempts already holds the number of the interrupted attempt.
-			// Setting to retry allows the main match statement to handle it.
-			this.setState({
-				...this.state,
-				// currentActionAttempts remains as is (number of the attempt that was interrupted)
-				progress: 'retry',
-				lastStatusUpdateTimestamp: Date.now(),
-				errorDetails: {
-					message: interruptionMessage,
-					failedAction: interruptedAction,
-				},
-			})
-			// The next alarm will pick this up, and the match statement will transition to 'retry'.
+			if (attemptOfInterruptedAction < MAX_ACTION_ATTEMPTS) {
+				this.logger.info(
+					`Transitioning interrupted action '${interruptedAction}' (attempt ${attemptOfInterruptedAction}) to 'retry' state for upcoming attempt ${attemptOfInterruptedAction + 1}.`
+				)
+				// Setting to retry allows the main match statement to handle it.
+				// currentActionAttempts (the one that was interrupted) is preserved for setRunning to increment.
+				this.setState({
+					...this.state,
+					progress: 'retry',
+					lastStatusUpdateTimestamp: Date.now(),
+					errorDetails: {
+						message: interruptionMessage,
+						failedAction: interruptedAction,
+					},
+				})
+			} else {
+				this.logger.error(
+					`Action '${interruptedAction}' attempt ${attemptOfInterruptedAction} was interrupted and has reached MAX attempts. Transitioning to handle_error.`
+				)
+				// Directly set state to prepare for handle_error, preserving interruption error details
+				this.setState({
+					...this.state,
+					progress: 'failed', // Mark as failed to trigger handle_error transition logic properly
+					lastStatusUpdateTimestamp: Date.now(),
+					errorDetails: {
+						message: `${interruptionMessage} Max attempts reached.`,
+						failedAction: interruptedAction,
+					},
+				})
+				// The main match statement will now see this action as 'failed' at MAX_ACTION_ATTEMPTS
+				// and should transition to handle_error.
+			}
 		}
 
 		this.setNextAlarm() // Set next alarm early
@@ -182,12 +203,12 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				...currentState,
 				currentAction: newAction,
 				progress: 'running',
-				currentActionAttempts: attemptNumberOfUpcomingRun, // Store the 1-indexed attempt number for the run that is starting
+				currentActionAttempts: attemptNumberOfUpcomingRun, // Restored
 				lastStatusUpdateTimestamp: Date.now(),
 				// errorDetails from currentState are preserved if transitioning from a failed/retry state to retry
 			})
 			this.logger.info(
-				`[AutofixAgent] Starting action: '${newAction}'. Attempt ${attemptNumberOfUpcomingRun} of ${MAX_ACTION_ATTEMPTS}.`
+				`[AutofixAgent] Starting action: '${newAction}'. Attempt ${attemptNumberOfUpcomingRun} of ${MAX_ACTION_ATTEMPTS}.` // Restored attempt count log
 			)
 		}
 
@@ -211,46 +232,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		// Timeout check for actions that are 'running'
-		if (this.state.progress === 'running') {
-			const duration = Date.now() - this.state.lastStatusUpdateTimestamp
-			if (duration > TIMEOUT_DURATION_MS) {
-				const currentActionThatTimedOut = this.state.currentAction
-				const timeoutMessage = `Action '${currentActionThatTimedOut}' attempt ${this.state.currentActionAttempts} timed out after ${Math.round(duration / 1000)}s.`
-				this.logger.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
-
-				// Mark the timed-out action as failed. setActionOutcome handles attempt counting interpretation.
-				const definitivelyFailed = this.setActionOutcome({
-					progress: 'failed',
-					error: new Error(timeoutMessage),
-				})
-
-				if (definitivelyFailed) {
-					this.logger.info(
-						// this.state.currentActionAttempts here refers to the attempt number that just failed.
-						`[AutofixAgent] Action '${currentActionThatTimedOut}' timed out and reached max attempts (${this.state.currentActionAttempts}). Transitioning to 'handle_error'.`
-					)
-					// Ensure the promise is cleared as we are aborting its logical flow.
-					this.currentActionPromise = undefined
-					await runActionHandler('handle_error', () => this.handleError())
-				} else {
-					this.logger.info(
-						// this.state.currentActionAttempts here refers to the attempt number that just failed.
-						// The next attempt will be currentActionAttempts + 1.
-						`[AutofixAgent] Action '${currentActionThatTimedOut}' timed out on attempt ${this.state.currentActionAttempts}. Will retry. Upcoming attempt ${this.state.currentActionAttempts + 1} of ${MAX_ACTION_ATTEMPTS}.`
-					)
-					// State is now 'failed', currentActionAttempts (the one that failed) is set by setActionOutcome.
-					// The next alarm will pick this up, and the match statement will transition to 'retry'.
-				}
-				return // Crucial: end processing for this alarm cycle after timeout.
-			}
-		}
-
 		// The core state machine: evaluates the current action and its progress
 		await match({
 			currentAction: this.state.currentAction,
 			progress: this.state.progress,
-			currentActionAttempts: this.state.currentActionAttempts, // include for match
+			currentActionAttempts: this.state.currentActionAttempts, // Restored in match context
 		})
 			.returnType<Promise<void>>()
 			// initial kick-off from idle or if initialize_container is to be retried
@@ -297,7 +283,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					...this.state,
 					currentAction: 'idle',
 					progress: 'idle',
-					currentActionAttempts: 0, // Reset attempts when going to idle
+					currentActionAttempts: 0, // Restored
 					errorDetails: undefined,
 					lastStatusUpdateTimestamp: Date.now(),
 				})
@@ -310,9 +296,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					progress: 'failed', // Only handle 'failed' here; 'retry' is handled by specific transitions above
 				},
 				async ({ currentAction, currentActionAttempts, progress }) => {
+					// currentActionAttempts restored here
 					if (currentActionAttempts < MAX_ACTION_ATTEMPTS) {
 						this.logger.info(
-							// currentActionAttempts here is the number of the attempt that just failed.
 							`[AutofixAgent] Action '${currentAction}' FAILED (attempt ${currentActionAttempts} of ${MAX_ACTION_ATTEMPTS}). Transitioning to 'retry' state for next alarm (upcoming attempt ${currentActionAttempts + 1}).`
 						)
 						// errorDetails from the failure are preserved from setActionOutcome.
@@ -345,7 +331,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					...this.state,
 					currentAction: 'idle',
 					progress: 'idle',
-					currentActionAttempts: 0, // Reset attempts when going to idle
+					currentActionAttempts: 0, // Restored
 					errorDetails: undefined, // Clear error details after successful error handling
 					lastStatusUpdateTimestamp: Date.now(),
 				})
@@ -353,20 +339,22 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			// Separate clause for when handle_error itself fails after running
 			.with({ currentAction: 'handle_error', progress: 'failed' }, async (matchedState) => {
 				this.logger.error(
+					// Restored attempt count log for handle_error failure
 					`[AutofixAgent] 'handle_error' action itself FAILED (attempt ${matchedState.currentActionAttempts}). Error details: ${JSON.stringify(this.state.errorDetails)}. Transitioning to 'idle' to prevent loop. Error details preserved.`
 				)
 				this.setState({
 					...this.state,
 					currentAction: 'idle',
 					progress: 'idle',
-					currentActionAttempts: 0, // Reset attempts
+					currentActionAttempts: 0, // Restored
 					// errorDetails are preserved
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
 			.with({ currentAction: P.not('idle'), progress: 'running' }, async (matchedState) => {
 				this.logger.info(
-					`[AutofixAgent] Action '${matchedState.currentAction}' is 'running' (attempt ${matchedState.currentActionAttempts}). Agent waits for completion or timeout.`
+					// Restored attempt count log
+					`[AutofixAgent] Action '${matchedState.currentAction}' is 'running' (attempt ${matchedState.currentActionAttempts}). Agent waits for completion.`
 				)
 			})
 			.with(
@@ -379,7 +367,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						...this.state,
 						currentAction: 'idle',
 						progress: 'idle',
-						currentActionAttempts: 0,
+						currentActionAttempts: 0, // Restored
 						errorDetails: undefined,
 						lastStatusUpdateTimestamp: Date.now(),
 					})
@@ -414,16 +402,19 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	private setActionOutcome(
 		options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }
 	): boolean {
-		const baseUpdate: Partial<AgentState> = {
-			lastStatusUpdateTimestamp: Date.now(),
-		}
+		// Return type is boolean again
 		const currentAction = this.state.currentAction // Action that just finished
+		const baseUpdate: Partial<
+			Omit<AgentState, 'repo' | 'branch' | 'currentAction' | 'currentActionAttempts'>
+		> = {
+			lastStatusUpdateTimestamp: Date.now(),
+			progress: options.progress,
+		}
 
 		if (options.progress === 'success') {
 			this.setState({
 				...this.state,
 				...baseUpdate,
-				progress: 'success',
 				// currentActionAttempts for the completed action already holds the 1-indexed attempt number it succeeded on.
 				errorDetails: undefined, // Clear error on success
 			})
@@ -433,16 +424,15 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			return false // Not definitively failed
 		} else {
 			// 'failed'
-			const error = options.error
-			const errorMessage =
-				error instanceof Error ? error.message : 'Unknown error during action execution'
+			const e = options.error // Using 'e' as per preference
+			const errorMessage = e instanceof Error ? e.message : 'Unknown error during action execution'
 
 			// currentActionAttempts in this.state already holds the number of the attempt that just failed.
 			const attemptThatFailed = this.state.currentActionAttempts
 
 			this.logger.error(
 				`[AutofixAgent] Action '${currentAction}' attempt ${attemptThatFailed} of ${MAX_ACTION_ATTEMPTS} FAILED. Error: ${errorMessage}`,
-				error instanceof Error ? error.stack : undefined // Log stack for Error instances
+				e instanceof Error ? e.stack : undefined // Log stack for Error instances
 			)
 
 			const isDefinitivelyFailed = attemptThatFailed >= MAX_ACTION_ATTEMPTS
@@ -451,7 +441,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				...this.state,
 				...baseUpdate, // progress: 'failed', lastStatusUpdateTimestamp
 				// currentActionAttempts remains as attemptThatFailed. It's not incremented here.
-				// It will be incremented by setRunning if/when a retry is initiated.
 				errorDetails: {
 					message: `Action '${currentAction}' attempt ${attemptThatFailed}/${MAX_ACTION_ATTEMPTS} failed: ${errorMessage}`,
 					failedAction: currentAction,
@@ -465,9 +454,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				return true // Definitively failed
 			} else {
 				this.logger.info(
-					// For 'retry' state (handled by interruption logic directly), this specific log might not appear from here,
-					// as 'retry' doesn't call setActionOutcome directly for the interruption event itself.
-					// However, if a retried 'retry' action then fails, this log will be relevant.
 					`[AutofixAgent] Action '${currentAction}' failed on attempt ${attemptThatFailed}. Retries remaining: ${MAX_ACTION_ATTEMPTS - attemptThatFailed}. Will transition to retry state for next alarm.`
 				)
 				return false // Not definitively failed yet, retries possible
