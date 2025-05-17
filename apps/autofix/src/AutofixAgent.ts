@@ -329,18 +329,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
+			// Handle failed actions (that are not 'idle' or 'handle_error')
+			// These will transition to 'pending' for a retry, or to 'handle_error' if max attempts are reached.
 			.with(
 				{
-					currentAction: P.union(
-						// 'idle' failing is an anomaly, not typically part of retry logic for specific actions
-						'initialize_container',
-						'detect_issues',
-						'fix_issues',
-						'commit_changes',
-						'push_changes',
-						'create_pr',
-						'finish'
-					),
+					currentAction: P.not(P.union('idle', 'handle_error')), // Any action except idle or handle_error
 					progress: 'failed', // Only handle 'failed' here; 'pending' is handled by specific transitions above
 				},
 				async ({ currentAction, currentActionAttempts, progress }) => {
