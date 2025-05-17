@@ -183,32 +183,31 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		 * @param newAction The action to transition to.
 		 */
 		const setRunning = (newAction: AgentAction): void => {
-			const currentState = this.state
 			let attemptNumberOfUpcomingRun: number
 
 			// If it's a new type of action OR the agent is starting its first action from an overall idle state,
 			// this is Attempt 1 for the newAction.
 			if (
-				currentState.currentAction !== newAction ||
-				(currentState.currentAction === 'idle' && currentState.progress === 'idle')
+				this.state.currentAction !== newAction ||
+				(this.state.currentAction === 'idle' && this.state.progress === 'idle')
 			) {
 				attemptNumberOfUpcomingRun = 1
 			} else {
 				// It's a retry of the same action (which was retry or failed and then became retry).
-				// currentState.currentActionAttempts holds the number of the *previous* attempt for this action.
-				attemptNumberOfUpcomingRun = currentState.currentActionAttempts + 1
+				// this.state.currentActionAttempts holds the number of the *previous* attempt for this action.
+				attemptNumberOfUpcomingRun = this.state.currentActionAttempts + 1
 			}
 
 			this.setState({
-				...currentState,
+				...this.state,
 				currentAction: newAction,
 				progress: 'running',
-				currentActionAttempts: attemptNumberOfUpcomingRun, // Restored
+				currentActionAttempts: attemptNumberOfUpcomingRun,
 				lastStatusUpdateTimestamp: Date.now(),
-				// errorDetails from currentState are preserved if transitioning from a failed/retry state to retry
+				// errorDetails from this.state are preserved if transitioning from a failed/retry state to retry
 			})
 			this.logger.info(
-				`[AutofixAgent] Starting action: '${newAction}'. Attempt ${attemptNumberOfUpcomingRun} of ${MAX_ACTION_ATTEMPTS}.` // Restored attempt count log
+				`[AutofixAgent] Starting action: '${newAction}'. Attempt ${attemptNumberOfUpcomingRun} of ${MAX_ACTION_ATTEMPTS}.`
 			)
 		}
 
