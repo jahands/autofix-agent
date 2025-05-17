@@ -35,6 +35,10 @@ const AgentActions = [
 	},
 	{ name: 'create_pr', description: 'Create a pull request for the fix.' },
 	{ name: 'finish', description: 'Agent has completed its task cycle.' },
+	{
+		name: 'cycle_complete',
+		description: 'Agent has completed a full operational cycle and is ready for idle.',
+	},
 ] as const satisfies Array<{
 	name: string
 	description: string
@@ -44,7 +48,7 @@ const AgentAction = z.enum(AgentActions.map((a) => a.name))
 export type AgentAction = z.infer<typeof AgentAction>
 
 // progress status for an action/stage
-const ProgressStatus = z.enum(['idle', 'retry', 'running', 'success', 'failed', 'done'])
+const ProgressStatus = z.enum(['idle', 'retry', 'running', 'success', 'failed'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
 // MAX_ACTION_ATTEMPTS is back, TIMEOUT_DURATION_MS remains removed
@@ -300,33 +304,50 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.with({ progress: 'success' }, async (matchedState) => {
 				const currentSuccessfulAction = matchedState.currentAction
 
+				// If 'finish' action was successful, it transitions to 'cycle_complete' action directly.
 				if (currentSuccessfulAction === 'finish') {
 					this.logger.info(
-						"[AutofixAgent] 'finish' action successful. Transitioning to 'done' progress state."
+						"[AutofixAgent] 'finish' action successful. Transitioning to 'cycle_complete' action."
 					)
 					this.setState({
 						...this.state,
-						progress: 'done',
+						currentAction: 'cycle_complete',
+						progress: 'success', // Mark cycle_complete as successful immediately
 						currentActionAttempts: 0,
 						errorDetails: undefined,
 					})
 					return
 				}
 
-				const nextActionName = this.handleActionSuccess()
+				const nextStepName = this.handleActionSuccess()
 
-				if (nextActionName === AGENT_SEQUENCE_END) {
+				if (nextStepName === AGENT_SEQUENCE_END) {
 					this.logger.info(
-						`[AutofixAgent] Action '${currentSuccessfulAction}' marked sequence end via handleActionSuccess. Transitioning to 'done'.`
+						`[AutofixAgent] Action '${currentSuccessfulAction}' marked sequence end via handleActionSuccess. Transitioning to 'cycle_complete' action.`
 					)
 					this.setState({
 						...this.state,
-						progress: 'done',
+						currentAction: 'cycle_complete',
+						progress: 'success', // Mark cycle_complete as successful immediately
 						currentActionAttempts: 0,
 						errorDetails: undefined,
 					})
-				} else if (nextActionName) {
-					await runActionHandler(nextActionName, () => this[getActionHandlerName(nextActionName)]())
+				} else if (nextStepName) {
+					const handlerNameString = getActionHandlerName(nextStepName)
+
+					if (typeof this[handlerNameString] === 'function') {
+						await runActionHandler(nextStepName, () => this[handlerNameString]())
+					} else {
+						this.logger.error(
+							`[AutofixAgent] CRITICAL: Handler method '${handlerNameString}' not found for action '${nextStepName}'. Transitioning to idle.`
+						)
+						this.setState({
+							...this.state,
+							currentAction: 'idle',
+							progress: 'idle',
+							currentActionAttempts: 0,
+						})
+					}
 				} else {
 					this.logger.info(
 						`[AutofixAgent] Action '${currentSuccessfulAction}' succeeded, but no next action defined in sequence by handleActionSuccess. Transitioning to idle.`
@@ -340,11 +361,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				}
 			})
 
-			// Handle the 'done' state by transitioning to idle/idle
-			.with({ progress: 'done' }, async (matchedState) => {
-				// Matches any action if progress is 'done'
+			// Handle the 'cycle_complete' state by transitioning to idle/idle
+			.with({ currentAction: 'cycle_complete', progress: 'success' }, async () => {
 				this.logger.info(
-					`[AutofixAgent] Action cycle ended (action: '${matchedState.currentAction}', progress: 'done'). Transitioning to idle/idle.`
+					`[AutofixAgent] Action 'cycle_complete' acknowledged. Transitioning to idle/idle.`
 				)
 				this.setState({
 					...this.state,
@@ -353,14 +373,12 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					currentActionAttempts: 0,
 					errorDetails: undefined, // Clear any previous error details
 				})
-				// Optional: Cancel further alarms if this is a truly terminal state for the agent's current task
-				// For now, it will just go idle and wait for new instructions or the next scheduled alarm if any.
 			})
-			// Handle failed actions (that are not 'idle')
+			// Handle failed actions (that are not 'idle' or 'cycle_complete')
 			// These will transition to 'retry', or to 'idle' if max attempts are reached.
 			.with(
 				{
-					currentAction: P.not('idle'), // Any action except idle
+					currentAction: P.not(P.union('idle', 'cycle_complete')), // Exclude idle and cycle_complete
 					progress: 'failed',
 				},
 				async ({ currentAction, currentActionAttempts, progress }) => {
@@ -388,12 +406,30 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					}
 				}
 			)
-			.with({ currentAction: P.not('idle'), progress: 'running' }, async (matchedState) => {
-				this.logger.info(
-					// Restored attempt count log
-					`[AutofixAgent] Action '${matchedState.currentAction}' is 'running' (attempt ${matchedState.currentActionAttempts}). Agent waits for completion.`
-				)
-			})
+			// Handle cycle_complete action being in an unexpected progress state (should only be 'success')
+			.with(
+				{ currentAction: 'cycle_complete', progress: P.not('success') },
+				async (matchedState) => {
+					this.logger.warn(
+						`[AutofixAgent] Anomalous state: 'cycle_complete' action found with progress '${matchedState.progress}'. Transitioning to idle/idle.`
+					)
+					this.setState({
+						...this.state,
+						currentAction: 'idle',
+						progress: 'idle',
+						currentActionAttempts: 0,
+						errorDetails: undefined,
+					})
+				}
+			)
+			.with(
+				{ currentAction: P.not(P.union('idle', 'cycle_complete')), progress: 'running' },
+				async (matchedState) => {
+					this.logger.info(
+						`[AutofixAgent] Action '${matchedState.currentAction}' is 'running' (attempt ${matchedState.currentActionAttempts}). Agent waits for completion.`
+					)
+				}
+			)
 			.with(
 				{ currentAction: 'idle', progress: P.union('running', 'success', 'failed', 'retry') }, // Added 'retry'
 				async (matchedState) => {
@@ -409,23 +445,27 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					})
 				}
 			)
-			.with({ currentAction: P.not('idle'), progress: 'idle' }, async (matchedState) => {
-				this.logger.warn(
-					`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Transitioning to 'retry' state to attempt restart.`
-				)
-				// Set to retry, the specific transition above for this action will pick it up.
-				// currentActionAttempts is preserved. If it was 0, it remains 0 for the pending retry.
-				// If it had prior attempts, those are respected.
-				this.setState({
-					...this.state,
-					// currentAction is already matchedState.currentAction
-					progress: 'retry',
-					errorDetails: {
-						message: `Anomalous recovery: Action '${matchedState.currentAction}' was idle, now set to retry.`,
-						failedAction: matchedState.currentAction,
-					},
-				})
-			})
+			.with(
+				{ currentAction: P.not(P.union('idle', 'cycle_complete')), progress: 'idle' },
+				async (matchedState) => {
+					// Exclude cycle_complete from this anomalous state too
+					this.logger.warn(
+						`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Transitioning to 'retry' state to attempt restart.`
+					)
+					// Set to retry, the specific transition above for this action will pick it up.
+					// currentActionAttempts is preserved. If it was 0, it remains 0 for the pending retry.
+					// If it had prior attempts, those are respected.
+					this.setState({
+						...this.state,
+						// currentAction is already matchedState.currentAction
+						progress: 'retry',
+						errorDetails: {
+							message: `Anomalous recovery: Action '${matchedState.currentAction}' was idle, now set to retry.`,
+							failedAction: matchedState.currentAction,
+						},
+					})
+				}
+			)
 			.exhaustive()
 	}
 

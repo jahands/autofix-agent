@@ -2,7 +2,7 @@ import type { AgentAction, AgentState } from './AutofixAgent' // Adjust path as 
 import type { logger as agentLogger } from './logger' // Assuming a base logger can be imported
 
 // Define which actions are excluded from needing explicit handlers defined by the decorator
-type ExcludedActions = 'idle'
+type ExcludedActions = 'idle' | 'cycle_complete'
 
 // Define the actions that are expected to have handlers
 export type HandledAgentActions = Exclude<AgentAction, ExcludedActions>
