@@ -212,7 +212,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			if (duration > TIMEOUT_DURATION_MS) {
 				const currentActionThatTimedOut = this.state.currentAction
 				const timeoutMessage = `Action '${currentActionThatTimedOut}' timed out after ${Math.round(duration / 1000)}s.`
-				console.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
+				this.logger.error(`[AutofixAgent] Timeout: ${timeoutMessage}`)
 
 				// Mark the timed-out action as failed. setActionOutcome handles attempt counting.
 				const definitivelyFailed = this.setActionOutcome({
@@ -364,7 +364,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			})
 			.with({ currentAction: 'handle_error', progress: 'failed' }, async (matchedState) => {
 				// This implies handleError itself failed.
-				console.error(
+				this.logger.error(
 					`[AutofixAgent] 'handle_error' action itself FAILED (attempt ${matchedState.currentActionAttempts}). Error details: ${JSON.stringify(this.state.errorDetails)}. Transitioning to 'idle' to prevent loop. Error details preserved.`
 				)
 				this.setState({
@@ -384,7 +384,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.with(
 				{ currentAction: 'idle', progress: P.union('running', 'success', 'failed', 'pending') }, // Added 'pending' and 'failed'
 				async (matchedState) => {
-					console.warn(
+					this.logger.warn(
 						`[AutofixAgent] Anomalous state: currentAction is 'idle' but progress is '${matchedState.progress}'. Resetting to idle/idle.`
 					)
 					this.setState({
@@ -398,7 +398,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				}
 			)
 			.with({ currentAction: P.not('idle'), progress: 'idle' }, async (matchedState) => {
-				console.warn(
+				this.logger.warn(
 					`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Will attempt to restart action '${matchedState.currentAction}'.`
 				)
 				// Attempt to restart the action. This is like a recovery mechanism.
@@ -459,7 +459,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			// This is the number of attempts that will have been made *after* this one.
 			const attemptsMade = this.state.currentActionAttempts + 1
 
-			console.error(
+			this.logger.error(
 				`[AutofixAgent] Action '${currentAction}' attempt ${attemptsMade} of ${MAX_ACTION_ATTEMPTS} FAILED. Error: ${errorMessage}`,
 				error instanceof Error ? error.stack : undefined // Log stack for Error instances
 			)
@@ -571,7 +571,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	private async handleError(): Promise<void> {
 		// The errorDetails in this.state should already be set by setActionOutcome
 		// from the action that ultimately failed and led to handleError.
-		console.warn(
+		this.logger.warn(
 			`[AutofixAgent] Executing handleError. Error details: ${JSON.stringify(this.state.errorDetails)}`
 		)
 		// For now, handling an error means acknowledging it and allowing the agent to go idle.
