@@ -5,59 +5,63 @@ alwaysApply: false
 ---
 # AutofixAgent Architecture Overview
 
-This document outlines the architecture of the `AutofixAgent`, located in [`apps/autofix/src/AutofixAgent.ts`](mdc:apps/autofix/src/AutofixAgent.ts). The agent is designed to automate fixes in Cloudflare Workers projects by managing a lifecycle of actions, with built-in retries for transient issues and interruptions. If an action definitively fails after exhausting retries, the agent transitions to an idle state, preserving error details.
+This document outlines the architecture of the `AutofixAgent`, located in [`apps/autofix/src/AutofixAgent.ts`](mdc:apps/autofix/src/AutofixAgent.ts). The agent is designed to automate fixes in Cloudflare Workers projects by managing a lifecycle of actions. If an action is interrupted or fails, the agent transitions to an idle state, preserving error details. Retry logic has been removed.
 
 **Core Components & Logic:**
 
 *   **`AutofixAgent` Class:** The primary class extending `Agent` from the Cloudflare Agents SDK.
 *   **State Management (`AgentState`):**
-    *   Includes: `repo`, `branch`, `currentAction` (Zod enum excluding `handle_error`), `currentActionAttempts` (1-indexed, 0 if idle), `progress` (`idle`, `retry`, `running`, `success`, `failed`), and optional `errorDetails`.
-    *   `lastStatusUpdateTimestamp` has been removed.
-*   **Constants:** `MAX_ACTION_ATTEMPTS` (e.g., 3). `TIMEOUT_DURATION_MS` has been removed.
+    *   Includes: `repo`, `branch`, `currentAction` (Zod enum: `idle`, `initialize_container`, ..., `finish`, `cycle_complete`), `progress` (Zod enum: `idle`, `running`, `success`, `failed`), and optional `errorDetails`.
+    *   `currentActionAttempts`, `MAX_ACTION_ATTEMPTS`, and the `'retry'` progress status have been removed.
+    *   `lastStatusUpdateTimestamp` has also been removed.
 *   **`currentActionPromise`:** Used to detect DO restarts during an action.
 
 **Alarm-Driven Processing:** (`onAlarm()` is the main loop).
 
 **`onAlarm()` Method:**
 
-*   **Interruption Check:** If a running action is interrupted (DO restart):
-    *   If `currentActionAttempts < MAX_ACTION_ATTEMPTS`, sets `progress` to `'retry'`.
-    *   Else (max attempts reached by interruption), transitions agent to `idle/idle` with error details and returns.
+*   **Interruption Check:** If a running action is interrupted (DO restart), transitions agent to `idle/idle` with error details and returns.
 *   `setNextAlarm()` is called.
 *   **Local Helper Functions:**
-    *   `setRunning(newAction: AgentAction)`: Sets action to `'running'`, manages `currentActionAttempts` (1 for new, increments for retry), logs.
+    *   `setRunning(newAction: AgentAction)`: Sets action to `'running'`, logs.
     *   `runActionHandler(actionToRun: AgentAction, callback: () => Promise<void>)`: Calls `setRunning`, manages `currentActionPromise`, executes callback, calls `setActionOutcome`.
 *   **Timeout Check:** Removed.
 *   **State Machine (`ts-pattern`'s `match`):**
-    *   **Sequential Transitions & Retry Handling:** Combined clauses (e.g., `previous_action/success` OR `current_action/retry`) call `runActionHandler`.
-    *   **`finish/success`**: Transitions to `idle/idle` (resets attempts, clears error details).
-    *   **Failed Action Handler (`currentAction: P.not('idle'), progress: 'failed'`)**:
-        *   If `currentActionAttempts < MAX_ACTION_ATTEMPTS`, sets `progress` to `'retry'` (preserves error details).
-        *   Else (max attempts reached), transitions agent to `idle/idle` (resets attempts, preserves error details from the failed action).
-    *   Clauses for `handle_error` (success, retry, failed) have been removed.
-    *   **`.../running`**: Logs and waits.
-    *   **Anomalous States**: Corrected as before (e.g., to `idle/idle` or `'retry'`).
+    *   **Sequential Transitions:** The `handleActionSuccess` method (injected by decorator) determines the next action based on `sequenceConfig`.
+        *   `.with({ progress: 'success' }, ...)`:
+            *   If current action is `finish`, transitions to `currentAction: 'cycle_complete', progress: 'success'`.
+            *   Else, calls `this.handleActionSuccess()`.
+            *   If `AGENT_SEQUENCE_END`, transitions to `currentAction: 'cycle_complete', progress: 'success'`.
+            *   If a next action name is returned, it's run via `runActionHandler` (using dynamic handler invocation `this[handlerName]()`).
+            *   If no next step, transitions to `idle/idle`.
+    *   **`cycle_complete/success`**: Transitions to `idle/idle`.
+    *   **Failed Action Handler (`currentAction: P.not(P.union('idle', 'cycle_complete')), progress: 'failed'`)**:
+        *   Always transitions agent to `idle/idle` (preserving error details).
+    *   **Anomalous States**: Corrected to `idle/idle` with logging.
+    *   Clauses for `progress: 'retry'` have been removed.
     *   `.exhaustive()` is used.
 
-**Action Handlers (`handle[ActionName]()`):** (As previously described: public async methods, throw on error, don't call `setActionOutcome` directly).
+**Action Handlers (`handle[ActionName]()`):** (Public async methods, throw on error, don't call `setActionOutcome` directly).
 
 **`setActionOutcome()` Method:**
 
-*   Signature: `setActionOutcome(options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }): boolean`.
-*   If `success`: sets state, clears `errorDetails`, logs. Returns `false`.
-*   If `failed`: `attemptThatFailed` is `this.state.currentActionAttempts`. Sets state, updates `errorDetails` (with attempt info). Logs. Returns `true` if `attemptThatFailed >= MAX_ACTION_ATTEMPTS`, else `false`.
+*   Signature: `setActionOutcome(options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }): void`.
+*   If `success`: sets state, clears `errorDetails`, logs.
+*   If `failed`: sets state, updates `errorDetails`. Logs.
+*   No longer returns boolean or handles attempt counting.
 
 **Logging:** (As previously described).
 
 **Key Workflow Patterns:**
 
-1.  **Start:** Initializes to `idle` (attempts: 0).
-2.  **Alarm & Interruption:** Interruption may lead to `retry` or directly to `idle` if max attempts hit.
+1.  **Start:** Initializes to `idle`.
+2.  **Alarm & Interruption:** Interruption leads directly to `idle` with error.
 3.  **State Matching (`match`):**
-    *   Progression/retry via combined clauses.
-    *   `'failed'` state leads to `retry` (if attempts remain) or `idle` (if max attempts reached), preserving error details.
-    *   `finish/success` -> `idle/idle`.
-4.  **Action Execution & Outcome:** As before.
-5.  **Loop:** Repeats. Actions are retried up to `MAX_ACTION_ATTEMPTS`. Definitive failure leads to agent idling with error details.
+    *   `idle/idle` -> starts `initialize_container`.
+    *   Successful actions transition to the next in sequence (via `handleActionSuccess`) or to `cycle_complete` if `finish` was the last.
+    *   `cycle_complete/success` -> `idle/idle`.
+    *   Any action failure (`progress: 'failed'`) -> `idle/idle` with error details.
+4.  **Action Execution & Outcome:** As before, but without retry context.
+5.  **Loop:** Repeats. No automatic retries; failures are terminal for the current workflow run.
 
-This architecture uses limited retries for actions without internal timeouts. Definitive failure of an action results in the agent becoming idle with preserved error information, rather than transitioning to a dedicated error-handling action.
+This architecture now represents a simpler, single-pass execution model per workflow trigger. Failures or interruptions halt the current process and set the agent to idle.

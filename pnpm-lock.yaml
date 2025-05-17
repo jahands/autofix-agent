@@ -87,8 +87,8 @@ importers:
         specifier: 4.19.4
         version: 4.19.4
       workers-tagged-logger:
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.11.0
+        version: 0.11.0
       zod:
         specifier: 4.0.0-beta.20250430T185432
         version: 4.0.0-beta.20250430T185432
@@ -133,8 +133,8 @@ importers:
         specifier: 4.7.8
         version: 4.7.8
       workers-tagged-logger:
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.11.0
+        version: 0.11.0
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.8.26
@@ -215,8 +215,8 @@ importers:
         specifier: 0.5.4
         version: 0.5.4
       workers-tagged-logger:
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.11.0
+        version: 0.11.0
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.8.26
@@ -3968,8 +3968,8 @@ packages:
     engines: {node: '>=16'}
     hasBin: true
 
-  workers-tagged-logger@0.10.0:
-    resolution: {integrity: sha512-vnNApLMrE9bhPpt6/8Nw7VdoVa7IXOVBhXXwriMwX+/laXq4GLOz5ywYM0bUZRuWEFGJHjuq5sEvqwwNIQg33w==}
+  workers-tagged-logger@0.11.0:
+    resolution: {integrity: sha512-jePWZYkLP6oQIVNLTMtKUFG1iQSmVUUTunJgyt1yQG/WNPskhmGSEYfuZzOcPpaM6CKjoiqKjAg2pbl8Cq+5yg==}
 
   wrangler@4.14.3:
     resolution: {integrity: sha512-gY2n3cC8yb8VyaM0aY9fXX5AIah+VkGefmAHltUBgVpJaM4QXun6O85BydtTEljLL67JTyFyBDn/UPyg2WhESQ==}
@@ -7929,7 +7929,7 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20250507.0
       '@cloudflare/workerd-windows-64': 1.20250507.0
 
-  workers-tagged-logger@0.10.0:
+  workers-tagged-logger@0.11.0:
     optionalDependencies:
       hono: 4.7.8
 
