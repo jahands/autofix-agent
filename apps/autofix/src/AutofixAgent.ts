@@ -338,18 +338,15 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				async ({ currentAction, currentActionAttempts, progress }) => {
 					if (currentActionAttempts < MAX_ACTION_ATTEMPTS) {
 						this.logger.info(
-							`[AutofixAgent] Retrying action '${currentAction}' (state: ${progress}), upcoming attempt ${currentActionAttempts + 1} of ${MAX_ACTION_ATTEMPTS}.`
+							`[AutofixAgent] Action '${currentAction}' FAILED (attempt ${currentActionAttempts} of ${MAX_ACTION_ATTEMPTS}). Transitioning to 'pending' for retry on next alarm.`
 						)
-						const handler = this.getActionHandler(currentAction)
-						if (handler) {
-							await runActionHandler(currentAction, handler)
-						} else {
-							const errMsg = `[AutofixAgent] Critical: No handler found for action '${currentAction}' during retry.`
-							this.logger.error(errMsg)
-							// Force definitive failure and transition to handle_error
-							this.setActionOutcome({ progress: 'failed', error: new Error(errMsg) })
-							await runActionHandler('handle_error', () => this.handleError())
-						}
+						// errorDetails from the failure are preserved from setActionOutcome.
+						// currentActionAttempts was already incremented by setActionOutcome.
+						this.setState({
+							...this.state,
+							progress: 'pending', // Set to pending, the specific transition above will pick it up.
+							lastStatusUpdateTimestamp: Date.now(),
+						})
 					} else {
 						this.logger.info(
 							`[AutofixAgent] Action '${currentAction}' (state: ${progress}) failed after ${currentActionAttempts} attempts. Transitioning to 'handle_error'.`
