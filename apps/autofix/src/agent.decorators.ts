@@ -1,6 +1,5 @@
-import { logger as agentLogger } from './logger' // Assuming a base logger can be imported
-
 import type { AgentAction, AgentState } from './AutofixAgent' // Adjust path as needed
+import type { logger as agentLogger } from './logger' // Assuming a base logger can be imported
 
 // Define which actions are excluded from needing explicit handlers defined by the decorator
 type ExcludedActions = 'idle'
@@ -38,19 +37,34 @@ interface AgentWithStateForSequence {
 	// Add other methods/properties if handleActionSuccess needs them, e.g., setState if it were to modify state directly.
 }
 
-// The Decorator Function - renamed and signature updated
-export function ConfigureAgentWorkflow<
+// Main setup function that returns the decorator and helper
+export function setupAgentWorkflow<
 	const TAllHandledActions extends ReadonlyArray<HandledAgentActions>,
 	const TSequenceConfig extends ActionSequenceConfig,
-	// TODO: Add more advanced type constraints to ensure TSequenceConfig keys/values are valid against TAllHandledActions
->(handledActions: TAllHandledActions, sequenceConfig: TSequenceConfig) {
-	return function <
+>(
+	handledActionsList: TAllHandledActions, // Renamed for clarity from handledActions
+	sequenceConfig: TSequenceConfig
+) {
+	// Helper function to get handler name string
+	function getActionHandlerName(
+		actionName: HandledAgentActions
+	): ActionToHandlerName<typeof actionName> {
+		// Re-implement PascalCase logic here directly or ensure PascalCase type utility is robust for this runtime use
+		const pascalCasedAction = actionName
+			.split('_')
+			.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+			.join('')
+		return `handle${pascalCasedAction}` as ActionToHandlerName<typeof actionName>
+	}
+
+	// The class decorator
+	const ConfigureAgentWorkflow = function <
 		TInstance extends AgentWithStateForSequence & {
 			// This mapped type enforces that for each action name in the TAllHandledActions tuple,
 			// the class instance must have a method with the derived handler name,
 			// and that method must match the expected signature: () => Promise<void>.
 			[K in TAllHandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
-		},
+		} & { [key: string]: any }, // Added [key: string]: any for dynamic access if needed
 		TargetClass extends new (...args: any[]) => TInstance,
 	>(target: TargetClass): TargetClass | void {
 		// Phase 2a: Decorator is primarily for type-checking handlers and being aware of the sequence.
@@ -100,6 +114,11 @@ export function ConfigureAgentWorkflow<
 		}
 
 		return target // Standard decorator practice is to return the target or a new constructor
+	}
+
+	return {
+		ConfigureAgentWorkflow,
+		getActionHandlerName,
 	}
 }
 

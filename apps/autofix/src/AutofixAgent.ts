@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { logger } from './logger'
 import {
-	ConfigureAgentWorkflow,
+	setupAgentWorkflow,
 	AGENT_SEQUENCE_END,
 	type HandledAgentActions,
 	type ActionSequenceConfig,
@@ -82,7 +82,11 @@ const autofixAgentSequence: ActionSequenceConfig = {
 	finish: AGENT_SEQUENCE_END, // 'finish' action leads to the end of the sequence
 }
 
-@ConfigureAgentWorkflow(autofixAgentHandledActions, autofixAgentSequence)
+// Call the setup function and destructure its return
+const { ConfigureAgentWorkflow, getActionHandlerName: getAgentActionHandlerName } =
+	setupAgentWorkflow(autofixAgentHandledActions, autofixAgentSequence)
+
+@ConfigureAgentWorkflow
 export class AutofixAgent extends Agent<Env, AgentState> {
 	// define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
@@ -203,29 +207,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		this.setNextAlarm() // Set next alarm early
 
-		// Local getActionHandler for the new generic success processor
-		const getActionHandler = (
-			actionName: HandledAgentActions
-		): (() => Promise<void>) | undefined => {
-			return (
-				match(actionName)
-					.with('initialize_container', () => () => this.handleInitializeContainer())
-					.with('detect_issues', () => () => this.handleDetectIssues())
-					.with('fix_issues', () => () => this.handleFixIssues())
-					.with('commit_changes', () => () => this.handleCommitChanges())
-					.with('push_changes', () => () => this.handlePushChanges())
-					.with('create_pr', () => () => this.handleCreatePr())
-					.with('finish', () => () => this.handleFinish())
-					// 'idle' is not a HandledAgentAction, and other actions like a potential future 'handle_error' would be added here if handled by this mechanism.
-					.otherwise(() => {
-						// This ensures that if HandledAgentActions changes, this switch will show a type error if a case is missing.
-						// However, at runtime, if an unhandled action string somehow gets here, log it.
-						this.logger.error(`[getActionHandler] Unknown actionName: ${actionName}`)
-						return undefined
-					})
-			)
-		}
-
 		/**
 		 * Sets the agent's current action to a new action and progress to 'running'.
 		 * Manages the 1-indexed attempt counter for the action about to run.
@@ -317,7 +298,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.with({ progress: 'success' }, async (matchedState) => {
 				const currentSuccessfulAction = matchedState.currentAction
 
-				// If 'finish' action was successful, it transitions to 'done' progress state directly.
 				if (currentSuccessfulAction === 'finish') {
 					this.logger.info(
 						"[AutofixAgent] 'finish' action successful. Transitioning to 'done' progress state."
@@ -331,14 +311,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					return
 				}
 
-				// For other successful actions, consult the sequence defined by the decorator
 				const nextStepOutcome = this.handleActionSuccess()
 
 				if (nextStepOutcome === AGENT_SEQUENCE_END) {
-					// This implies an action other than 'finish' unexpectedly ended the sequence.
-					// Or, if 'finish' wasn't handled above, this would catch it.
-					// Based on current setup, AGENT_SEQUENCE_END comes from 'finish' action via handleActionSuccess.
-					// So, this path means 'finish' was processed by handleActionSuccess (e.g. if not special-cased above).
 					this.logger.info(
 						`[AutofixAgent] Action '${currentSuccessfulAction}' marked sequence end via handleActionSuccess. Transitioning to 'done'.`
 					)
@@ -349,15 +324,18 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						errorDetails: undefined,
 					})
 				} else if (nextStepOutcome) {
-					// nextStepOutcome is a HandledAgentActions string name
-					const nextActionName = nextStepOutcome
-					// Need to get the actual handler function for this action name
-					const handler = getActionHandler(nextActionName) // Re-introducing local getActionHandler
-					if (handler) {
-						await runActionHandler(nextActionName, handler)
+					const nextActionName = nextStepOutcome as HandledAgentActions
+					const handlerNameString = getAgentActionHandlerName(nextActionName)
+
+					// Type assertion needed because TS doesn't statically know that this[handlerNameString] is the correct method.
+					// The decorator's type checking provides the actual safety.
+					if (typeof (this as any)[handlerNameString] === 'function') {
+						await runActionHandler(nextActionName, () =>
+							((this as any)[handlerNameString] as () => Promise<void>)()
+						)
 					} else {
 						this.logger.error(
-							`[AutofixAgent] CRITICAL: No handler found for next sequenced action: '${nextActionName}'. Transitioning to idle.`
+							`[AutofixAgent] CRITICAL: Handler method '${handlerNameString}' not found for action '${nextActionName}'. Transitioning to idle.`
 						)
 						this.setState({
 							...this.state,
@@ -367,7 +345,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						})
 					}
 				} else {
-					// handleActionSuccess returned undefined, meaning currentSuccessfulAction is not in sequence or has no next.
 					this.logger.info(
 						`[AutofixAgent] Action '${currentSuccessfulAction}' succeeded, but no next action defined in sequence by handleActionSuccess. Transitioning to idle.`
 					)
