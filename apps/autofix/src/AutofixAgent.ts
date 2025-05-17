@@ -399,29 +399,21 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			)
 			.with({ currentAction: P.not('idle'), progress: 'idle' }, async (matchedState) => {
 				this.logger.warn(
-					`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Will attempt to restart action '${matchedState.currentAction}'.`
+					`[AutofixAgent] Anomalous state: currentAction is '${matchedState.currentAction}' but progress is 'idle'. Action might not have started correctly or was reset. Transitioning to 'pending' to attempt restart.`
 				)
-				// Attempt to restart the action. This is like a recovery mechanism.
-				const handler = this.getActionHandler(matchedState.currentAction)
-				if (handler) {
-					await runActionHandler(matchedState.currentAction, handler)
-				} else {
-					this.logger.error(
-						`[AutofixAgent] No handler for anomalous state action '${matchedState.currentAction}'. Transitioning to idle.`
-					)
-					this.setState({
-						// Go to idle to prevent loops
-						...this.state,
-						currentAction: 'idle',
-						progress: 'idle',
-						currentActionAttempts: 0,
-						errorDetails: {
-							message: `Anomaly: No handler for ${matchedState.currentAction} with idle progress`,
-							failedAction: matchedState.currentAction,
-						},
-						lastStatusUpdateTimestamp: Date.now(),
-					})
-				}
+				// Set to pending, the specific transition above for this action will pick it up.
+				// currentActionAttempts is preserved. If it was 0, it remains 0 for the pending retry.
+				// If it had prior attempts, those are respected.
+				this.setState({
+					...this.state,
+					// currentAction is already matchedState.currentAction
+					progress: 'pending',
+					lastStatusUpdateTimestamp: Date.now(),
+					errorDetails: {
+						message: `Anomalous recovery: Action '${matchedState.currentAction}' was idle, now set to pending.`,
+						failedAction: matchedState.currentAction,
+					},
+				})
 			})
 			.exhaustive()
 	}
@@ -493,25 +485,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				return false // Not definitively failed yet, retries possible
 			}
 		}
-	}
-
-	/**
-	 * Retrieves the handler function for a given AgentAction.
-	 * @param action The AgentAction.
-	 * @returns The corresponding handler function or undefined if no handler exists.
-	 */
-	private getActionHandler(action: AgentAction): (() => Promise<void>) | undefined {
-		return match(action)
-			.with('initialize_container', () => () => this.handleInitializeContainer())
-			.with('detect_issues', () => () => this.handleDetectIssues())
-			.with('fix_issues', () => () => this.handleFixIssues())
-			.with('commit_changes', () => () => this.handleCommitChanges())
-			.with('push_changes', () => () => this.handlePushChanges())
-			.with('create_pr', () => () => this.handleCreatePr())
-			.with('finish', () => () => this.handleFinish())
-			.with('handle_error', () => () => this.handleError())
-			.with('idle', () => undefined) // Idle has no handler function
-			.exhaustive()
 	}
 
 	// =========================== //
