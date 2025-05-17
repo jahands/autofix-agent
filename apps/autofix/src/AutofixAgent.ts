@@ -4,7 +4,12 @@ import { match, P } from 'ts-pattern'
 import { z } from 'zod'
 
 import { logger } from './logger'
-import { EnsureActionHandlers, type HandledAgentActions } from './agent.decorators'
+import {
+	ConfigureAgentWorkflow,
+	AGENT_SEQUENCE_END,
+	type HandledAgentActions,
+	type ActionSequenceConfig,
+} from './agent.decorators'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
@@ -38,7 +43,7 @@ const AgentAction = z.enum(AgentActions.map((a) => a.name))
 export type AgentAction = z.infer<typeof AgentAction>
 
 // progress status for an action/stage
-const ProgressStatus = z.enum(['idle', 'retry', 'running', 'success', 'failed'])
+const ProgressStatus = z.enum(['idle', 'retry', 'running', 'success', 'failed', 'done'])
 type ProgressStatus = z.infer<typeof ProgressStatus>
 
 // MAX_ACTION_ATTEMPTS is back, TIMEOUT_DURATION_MS remains removed
@@ -65,7 +70,18 @@ const autofixAgentHandledActions: HandledAgentActions[] = [
 	// 'handle_error', // Remains removed
 ]
 
-@EnsureActionHandlers(autofixAgentHandledActions)
+// Define the action sequence for AutofixAgent
+const autofixAgentSequence: ActionSequenceConfig = {
+	initialize_container: 'detect_issues',
+	detect_issues: 'fix_issues',
+	fix_issues: 'commit_changes',
+	commit_changes: 'push_changes',
+	push_changes: 'create_pr',
+	create_pr: 'finish',
+	finish: AGENT_SEQUENCE_END, // 'finish' action leads to the end of the sequence
+}
+
+@ConfigureAgentWorkflow(autofixAgentHandledActions, autofixAgentSequence)
 export class AutofixAgent extends Agent<Env, AgentState> {
 	// define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
@@ -283,16 +299,34 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				{ currentAction: 'finish', progress: 'retry' },
 				() => runActionHandler('finish', () => this.handleFinish())
 			)
-			// transitions to idle state (no further work to do)
+			// transitions to idle state (no further work to do) after finish is successful
 			.with({ currentAction: 'finish', progress: 'success' }, async () => {
-				this.logger.info("[AutofixAgent] 'finish' action successful. Transitioning to 'idle'.")
+				this.logger.info(
+					"[AutofixAgent] 'finish' action successful. Transitioning to 'done' progress state."
+				)
+				this.setState({
+					...this.state,
+					// currentAction remains 'finish'
+					progress: 'done',
+					currentActionAttempts: 0, // Reset attempts as the cycle is complete for 'finish'
+					errorDetails: undefined,
+				})
+			})
+			// Handle the 'done' state by transitioning to idle/idle
+			.with({ progress: 'done' }, async (matchedState) => {
+				// Matches any action if progress is 'done'
+				this.logger.info(
+					`[AutofixAgent] Action cycle ended (action: '${matchedState.currentAction}', progress: 'done'). Transitioning to idle/idle.`
+				)
 				this.setState({
 					...this.state,
 					currentAction: 'idle',
 					progress: 'idle',
-					currentActionAttempts: 0, // Restored
-					errorDetails: undefined,
+					currentActionAttempts: 0,
+					errorDetails: undefined, // Clear any previous error details
 				})
+				// Optional: Cancel further alarms if this is a truly terminal state for the agent's current task
+				// For now, it will just go idle and wait for new instructions or the next scheduled alarm if any.
 			})
 			// Handle failed actions (that are not 'idle')
 			// These will transition to 'retry', or to 'idle' if max attempts are reached.
