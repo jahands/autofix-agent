@@ -1,7 +1,7 @@
 import type { AgentAction } from './AutofixAgent' // Adjust path as needed
 
 // Define which actions are excluded from needing explicit handlers defined by the decorator
-type ExcludedActions = 'idle' | 'finish'
+type ExcludedActions = 'idle'
 
 // Define the actions that are expected to have handlers
 export type HandledAgentActions = Exclude<AgentAction, ExcludedActions>

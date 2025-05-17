@@ -61,7 +61,8 @@ const autofixAgentHandledActions: HandledAgentActions[] = [
 	'commit_changes',
 	'push_changes',
 	'create_pr',
-	// 'finish' is excluded as per previous discussion
+	'finish',
+	// 'handle_error', // Remains removed
 ]
 
 @EnsureActionHandlers(autofixAgentHandledActions)
