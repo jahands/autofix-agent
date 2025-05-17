@@ -4,6 +4,7 @@ import { match, P } from 'ts-pattern'
 import { z } from 'zod'
 
 import { logger } from './logger'
+import { EnsureActionHandlers, type HandledAgentActions } from './agent.decorators'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
@@ -28,14 +29,13 @@ const AgentActions = [
 	},
 	{ name: 'create_pr', description: 'Create a pull request for the fix.' },
 	{ name: 'finish', description: 'Agent has completed its task cycle.' },
-	{ name: 'handle_error', description: 'An error occurred and is being handled.' }, // renamed from 'error'
 ] as const satisfies Array<{
 	name: string
 	description: string
 }>
 
 const AgentAction = z.enum(AgentActions.map((a) => a.name))
-type AgentAction = z.infer<typeof AgentAction>
+export type AgentAction = z.infer<typeof AgentAction>
 
 // progress status for an action/stage
 const ProgressStatus = z.enum(['idle', 'retry', 'running', 'success', 'failed'])
@@ -53,6 +53,18 @@ type AgentState = {
 	errorDetails?: { message: string; failedAction: AgentAction } // optional error context
 }
 
+// Define the list of actions that require handlers for this specific agent
+const autofixAgentHandledActions: HandledAgentActions[] = [
+	'initialize_container',
+	'detect_issues',
+	'fix_issues',
+	'commit_changes',
+	'push_changes',
+	'create_pr',
+	// 'finish' is excluded as per previous discussion
+]
+
+@EnsureActionHandlers(autofixAgentHandledActions)
 export class AutofixAgent extends Agent<Env, AgentState> {
 	// define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
@@ -153,19 +165,21 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				})
 			} else {
 				this.logger.error(
-					`Action '${interruptedAction}' attempt ${attemptOfInterruptedAction} was interrupted and has reached MAX attempts. Transitioning to handle_error.`
+					`Action '${interruptedAction}' attempt ${attemptOfInterruptedAction} was interrupted and has reached MAX attempts. Transitioning to idle with error.`
 				)
-				// Directly set state to prepare for handle_error, preserving interruption error details
+				// Directly set state to idle, preserving interruption error details
 				this.setState({
 					...this.state,
-					progress: 'failed', // Mark as failed to trigger handle_error transition logic properly
+					currentAction: 'idle', // Go to idle
+					progress: 'idle',
+					currentActionAttempts: 0, // Reset attempts
 					errorDetails: {
-						message: `${interruptionMessage} Max attempts reached.`,
+						message: `${interruptionMessage} Max attempts reached. Agent idle.`,
 						failedAction: interruptedAction,
 					},
 				})
-				// The main match statement will now see this action as 'failed' at MAX_ACTION_ATTEMPTS
-				// and should transition to handle_error.
+				// No further processing for this alarm if error is terminal for the action
+				return
 			}
 		}
 
@@ -218,7 +232,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				// setActionOutcome will increment attempts and determine if it's a definitive failure
 				// or if retries are still possible.
 				this.setActionOutcome({ progress: 'failed', error: e })
-				// The main match statement will handle the 'failed' state for retry or transition to handle_error
+				// The main match statement will handle the 'failed' state for retry or transition to idle
 			} finally {
 				this.currentActionPromise = undefined
 			}
@@ -279,66 +293,38 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					errorDetails: undefined,
 				})
 			})
-			// Handle failed actions (that are not 'idle' or 'handle_error')
-			// These will transition to 'retry' for a retry, or to 'handle_error' if max attempts are reached.
+			// Handle failed actions (that are not 'idle')
+			// These will transition to 'retry', or to 'idle' if max attempts are reached.
 			.with(
 				{
-					currentAction: P.not(P.union('idle', 'handle_error')), // Any action except idle or handle_error
-					progress: 'failed', // Only handle 'failed' here; 'retry' is handled by specific transitions above
+					currentAction: P.not('idle'), // Any action except idle
+					progress: 'failed',
 				},
 				async ({ currentAction, currentActionAttempts, progress }) => {
-					// currentActionAttempts restored here
 					if (currentActionAttempts < MAX_ACTION_ATTEMPTS) {
 						this.logger.info(
 							`[AutofixAgent] Action '${currentAction}' FAILED (attempt ${currentActionAttempts} of ${MAX_ACTION_ATTEMPTS}). Transitioning to 'retry' state for next alarm (upcoming attempt ${currentActionAttempts + 1}).`
 						)
-						// errorDetails from the failure are preserved from setActionOutcome.
-						// currentActionAttempts (the one that failed) is already set in the state by setActionOutcome.
 						this.setState({
 							...this.state,
-							progress: 'retry', // Set to retry, the specific transition above will pick it up.
-							// currentActionAttempts remains as the number of the attempt that failed.
+							progress: 'retry',
+							errorDetails: this.state.errorDetails,
 						})
 					} else {
-						this.logger.info(
-							`[AutofixAgent] Action '${currentAction}' (state: ${progress}) failed after ${currentActionAttempts} attempts (MAX attempts reached). Transitioning to 'handle_error'.`
+						this.logger.error(
+							`[AutofixAgent] Action '${currentAction}' (state: ${progress}) failed after ${currentActionAttempts} attempts (MAX attempts reached). Transitioning to idle with error.`
 						)
-						// errorDetails should have been set by the last setActionOutcome call or interruption handling.
-						await runActionHandler('handle_error', () => this.handleError())
+						// errorDetails should have been set by the last setActionOutcome call.
+						this.setState({
+							...this.state,
+							currentAction: 'idle',
+							progress: 'idle',
+							currentActionAttempts: 0,
+							// errorDetails are preserved from the failed action
+						})
 					}
 				}
 			)
-			// Handle case where handle_error itself was interrupted (now 'retry' state)
-			.with({ currentAction: 'handle_error', progress: 'retry' }, () =>
-				runActionHandler('handle_error', () => this.handleError())
-			)
-			// set to idle after handling errors successfully
-			.with({ currentAction: 'handle_error', progress: 'success' }, async () => {
-				this.logger.info(
-					"[AutofixAgent] 'handle_error' action successful. Transitioning to 'idle'."
-				)
-				this.setState({
-					...this.state,
-					currentAction: 'idle',
-					progress: 'idle',
-					currentActionAttempts: 0, // Restored
-					errorDetails: undefined, // Clear error details after successful error handling
-				})
-			})
-			// Separate clause for when handle_error itself fails after running
-			.with({ currentAction: 'handle_error', progress: 'failed' }, async (matchedState) => {
-				this.logger.error(
-					// Restored attempt count log for handle_error failure
-					`[AutofixAgent] 'handle_error' action itself FAILED (attempt ${matchedState.currentActionAttempts}). Error details: ${JSON.stringify(this.state.errorDetails)}. Transitioning to 'idle' to prevent loop. Error details preserved.`
-				)
-				this.setState({
-					...this.state,
-					currentAction: 'idle',
-					progress: 'idle',
-					currentActionAttempts: 0, // Restored
-					// errorDetails are preserved
-				})
-			})
 			.with({ currentAction: P.not('idle'), progress: 'running' }, async (matchedState) => {
 				this.logger.info(
 					// Restored attempt count log
@@ -444,7 +430,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	// ===== Action Handlers ===== //
 	// =========================== //
 
-	private async handleInitializeContainer(): Promise<void> {
+	async handleInitializeContainer(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleInitializeContainer')
 		const { repo } = this.state
 		this.logger.info(`[AutofixAgent] Mock: Initializing container for repo: ${repo}`)
@@ -452,62 +438,45 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info('[AutofixAgent] Container initialized.')
 	}
 
-	private async handleDetectIssues(): Promise<void> {
+	async handleDetectIssues(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleDetectIssues')
 		this.logger.info('[AutofixAgent] Mock: Detecting issues...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] Issue detection complete.')
 	}
 
-	private async handleFixIssues(): Promise<void> {
+	async handleFixIssues(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleFixIssues')
 		this.logger.info('[AutofixAgent] Mock: Fixing issues...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] Issue fixing complete.')
 	}
 
-	private async handleCommitChanges(): Promise<void> {
+	async handleCommitChanges(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleCommitChanges')
 		this.logger.info('[AutofixAgent] Mock: Committing changes...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] Changes committed.')
 	}
 
-	private async handlePushChanges(): Promise<void> {
+	async handlePushChanges(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handlePushChanges')
 		this.logger.info('[AutofixAgent] Mock: Pushing changes...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] Changes pushed.')
 	}
 
-	private async handleCreatePr(): Promise<void> {
+	async handleCreatePr(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleCreatePr')
 		this.logger.info('[AutofixAgent] Mock: Creating PR...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] PR created.')
 	}
 
-	private async handleFinish(): Promise<void> {
+	async handleFinish(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleFinish. Agent process cycle completed.')
 		// this stage mainly signifies the end of a full pass.
 		// runActionHandler will set its progress to 'success'.
 		// If this were to fail, retries would apply as per normal action handling.
-	}
-
-	private async handleError(): Promise<void> {
-		// The errorDetails in this.state should already be set by setActionOutcome
-		// from the action that ultimately failed and led to handleError.
-		this.logger.warn(
-			`[AutofixAgent] Executing handleError. Error details: ${JSON.stringify(this.state.errorDetails)}`
-		)
-		// For now, handling an error means acknowledging it and allowing the agent to go idle.
-		// runActionHandler (which calls this) will set handleError's progress to 'success'.
-		// If handleError itself were to throw an error, it would be caught by its own runActionHandler
-		// and its setActionOutcome would be called. The main match statement has a case for
-		// 'handle_error'/'failed' which transitions to idle to prevent loops.
-
-		// Future: Implement more specific error handling, notifications, or even specific cleanup actions.
-		// For example, if errorDetails.failedAction was 'push_changes', try to delete remote branch.
-		await new Promise((resolve) => setTimeout(resolve, ms('0.05 seconds'))) // Simulate some brief work
 	}
 }
