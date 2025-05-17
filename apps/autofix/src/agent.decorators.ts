@@ -1,4 +1,6 @@
-import type { AgentAction } from './AutofixAgent' // Adjust path as needed
+import { logger as agentLogger } from './logger' // Assuming a base logger can be imported
+
+import type { AgentAction, AgentState } from './AutofixAgent' // Adjust path as needed
 
 // Define which actions are excluded from needing explicit handlers defined by the decorator
 type ExcludedActions = 'idle'
@@ -28,6 +30,14 @@ export type ActionSequenceConfig = {
 	[ActionName in HandledAgentActions]?: NextActionOutcome
 }
 
+// Interface for what an instance of the decorated class should provide to handleActionSuccess
+// This is a subset of AutofixAgent's properties and state structure.
+interface AgentWithStateForSequence {
+	state: Pick<AgentState, 'currentAction'>
+	logger: typeof agentLogger // Assuming logger is available on 'this'
+	// Add other methods/properties if handleActionSuccess needs them, e.g., setState if it were to modify state directly.
+}
+
 // The Decorator Function - renamed and signature updated
 export function ConfigureAgentWorkflow<
 	const TAllHandledActions extends ReadonlyArray<HandledAgentActions>,
@@ -35,12 +45,13 @@ export function ConfigureAgentWorkflow<
 	// TODO: Add more advanced type constraints to ensure TSequenceConfig keys/values are valid against TAllHandledActions
 >(handledActions: TAllHandledActions, sequenceConfig: TSequenceConfig) {
 	return function <
-		TargetClass extends new (...args: any[]) => {
+		TInstance extends AgentWithStateForSequence & {
 			// This mapped type enforces that for each action name in the TAllHandledActions tuple,
 			// the class instance must have a method with the derived handler name,
 			// and that method must match the expected signature: () => Promise<void>.
 			[K in TAllHandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
 		},
+		TargetClass extends new (...args: any[]) => TInstance,
 	>(target: TargetClass): TargetClass | void {
 		// Phase 2a: Decorator is primarily for type-checking handlers and being aware of the sequence.
 		// It doesn't yet generate or modify runtime behavior based on sequenceConfig.
@@ -51,6 +62,42 @@ export function ConfigureAgentWorkflow<
 		// };
 		// type Check = IsValidSequence<TSequenceConfig, TAllHandledActions[number]>;
 		// This is a placeholder for where more advanced type validation of the sequence could go.
+
+		// Add the handleActionSuccess method to the prototype of the decorated class
+		target.prototype.handleActionSuccess = function (
+			this: TInstance
+		): NextActionOutcome | undefined {
+			const currentAction = this.state.currentAction as HandledAgentActions // Cast needed as currentAction can be 'idle'
+
+			if (!Object.prototype.hasOwnProperty.call(sequenceConfig, currentAction)) {
+				// This successful action is not part of the defined sequence config,
+				// or it's an action that shouldn't call this (e.g. 'idle' if it somehow reached here)
+				this.logger.warn(
+					`[AutofixAgent.handleActionSuccess] Action '${currentAction}' succeeded but is not in sequenceConfig or has no defined next step.`
+				)
+				return undefined // Or throw an error, or return a specific sentinel
+			}
+
+			const nextStep = sequenceConfig[currentAction]
+
+			if (nextStep === AGENT_SEQUENCE_END) {
+				this.logger.info(
+					`[AutofixAgent.handleActionSuccess] Action '${currentAction}' succeeded, sequence ended.`
+				)
+				return AGENT_SEQUENCE_END
+			} else if (nextStep) {
+				// nextStep is a HandledAgentActions
+				this.logger.info(
+					`[AutofixAgent.handleActionSuccess] Action '${currentAction}' succeeded. Next action: '${nextStep}'.`
+				)
+				return nextStep
+			}
+			// Should not be reached if sequenceConfig is well-formed for all HandledAgentActions in a sequence
+			this.logger.warn(
+				`[AutofixAgent.handleActionSuccess] No next step defined for successful action '${currentAction}' in sequenceConfig.`
+			)
+			return undefined
+		}
 
 		return target // Standard decorator practice is to return the target or a new constructor
 	}

@@ -9,6 +9,7 @@ import {
 	AGENT_SEQUENCE_END,
 	type HandledAgentActions,
 	type ActionSequenceConfig,
+	type NextActionOutcome,
 } from './agent.decorators'
 
 import type { AgentContext } from 'agents'
@@ -49,7 +50,7 @@ type ProgressStatus = z.infer<typeof ProgressStatus>
 // MAX_ACTION_ATTEMPTS is back, TIMEOUT_DURATION_MS remains removed
 const MAX_ACTION_ATTEMPTS = 3
 
-type AgentState = {
+export type AgentState = {
 	repo: string
 	branch: string
 	currentAction: AgentAction // the current lifecycle stage
@@ -202,6 +203,29 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		this.setNextAlarm() // Set next alarm early
 
+		// Local getActionHandler for the new generic success processor
+		const getActionHandler = (
+			actionName: HandledAgentActions
+		): (() => Promise<void>) | undefined => {
+			return (
+				match(actionName)
+					.with('initialize_container', () => () => this.handleInitializeContainer())
+					.with('detect_issues', () => () => this.handleDetectIssues())
+					.with('fix_issues', () => () => this.handleFixIssues())
+					.with('commit_changes', () => () => this.handleCommitChanges())
+					.with('push_changes', () => () => this.handlePushChanges())
+					.with('create_pr', () => () => this.handleCreatePr())
+					.with('finish', () => () => this.handleFinish())
+					// 'idle' is not a HandledAgentAction, and other actions like a potential future 'handle_error' would be added here if handled by this mechanism.
+					.otherwise(() => {
+						// This ensures that if HandledAgentActions changes, this switch will show a type error if a case is missing.
+						// However, at runtime, if an unhandled action string somehow gets here, log it.
+						this.logger.error(`[getActionHandler] Unknown actionName: ${actionName}`)
+						return undefined
+					})
+			)
+		}
+
 		/**
 		 * Sets the agent's current action to a new action and progress to 'running'.
 		 * Manages the 1-indexed attempt counter for the action about to run.
@@ -259,59 +283,103 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		await match({
 			currentAction: this.state.currentAction,
 			progress: this.state.progress,
-			currentActionAttempts: this.state.currentActionAttempts, // Restored in match context
+			currentActionAttempts: this.state.currentActionAttempts,
 		})
 			.returnType<Promise<void>>()
-			// initial kick-off from idle or if initialize_container is to be retried
+			// Initial kick-off from idle OR if initialize_container is to be retried by specific retry trigger
 			.with(
 				{ currentAction: 'idle', progress: 'idle' },
 				{ currentAction: 'initialize_container', progress: 'retry' },
 				() => runActionHandler('initialize_container', () => this.handleInitializeContainer())
 			)
-			// successful stage transitions OR current stage is marked for retry (interrupted/failed previously)
-			.with(
-				{ currentAction: 'initialize_container', progress: 'success' },
-				{ currentAction: 'detect_issues', progress: 'retry' },
-				() => runActionHandler('detect_issues', () => this.handleDetectIssues())
+			// Retry handlers for specific actions (when progress is 'retry')
+			// These are hit if an action failed, went to 'retry' via generic failed handler, or was interrupted into 'retry'.
+			.with({ currentAction: 'detect_issues', progress: 'retry' }, () =>
+				runActionHandler('detect_issues', () => this.handleDetectIssues())
 			)
-			.with(
-				{ currentAction: 'detect_issues', progress: 'success' },
-				{ currentAction: 'fix_issues', progress: 'retry' },
-				() => runActionHandler('fix_issues', () => this.handleFixIssues())
+			.with({ currentAction: 'fix_issues', progress: 'retry' }, () =>
+				runActionHandler('fix_issues', () => this.handleFixIssues())
 			)
-			.with(
-				{ currentAction: 'fix_issues', progress: 'success' },
-				{ currentAction: 'commit_changes', progress: 'retry' },
-				() => runActionHandler('commit_changes', () => this.handleCommitChanges())
+			.with({ currentAction: 'commit_changes', progress: 'retry' }, () =>
+				runActionHandler('commit_changes', () => this.handleCommitChanges())
 			)
-			.with(
-				{ currentAction: 'commit_changes', progress: 'success' },
-				{ currentAction: 'push_changes', progress: 'retry' },
-				() => runActionHandler('push_changes', () => this.handlePushChanges())
+			.with({ currentAction: 'push_changes', progress: 'retry' }, () =>
+				runActionHandler('push_changes', () => this.handlePushChanges())
 			)
-			.with(
-				{ currentAction: 'push_changes', progress: 'success' },
-				{ currentAction: 'create_pr', progress: 'retry' },
-				() => runActionHandler('create_pr', () => this.handleCreatePr())
+			.with({ currentAction: 'create_pr', progress: 'retry' }, () =>
+				runActionHandler('create_pr', () => this.handleCreatePr())
 			)
-			.with(
-				{ currentAction: 'create_pr', progress: 'success' },
-				{ currentAction: 'finish', progress: 'retry' },
-				() => runActionHandler('finish', () => this.handleFinish())
+			.with({ currentAction: 'finish', progress: 'retry' }, () =>
+				runActionHandler('finish', () => this.handleFinish())
 			)
-			// transitions to idle state (no further work to do) after finish is successful
-			.with({ currentAction: 'finish', progress: 'success' }, async () => {
-				this.logger.info(
-					"[AutofixAgent] 'finish' action successful. Transitioning to 'done' progress state."
-				)
-				this.setState({
-					...this.state,
-					// currentAction remains 'finish'
-					progress: 'done',
-					currentActionAttempts: 0, // Reset attempts as the cycle is complete for 'finish'
-					errorDetails: undefined,
-				})
+
+			// Generic handler for successful actions to determine next step via sequence
+			.with({ progress: 'success' }, async (matchedState) => {
+				const currentSuccessfulAction = matchedState.currentAction
+
+				// If 'finish' action was successful, it transitions to 'done' progress state directly.
+				if (currentSuccessfulAction === 'finish') {
+					this.logger.info(
+						"[AutofixAgent] 'finish' action successful. Transitioning to 'done' progress state."
+					)
+					this.setState({
+						...this.state,
+						progress: 'done',
+						currentActionAttempts: 0,
+						errorDetails: undefined,
+					})
+					return
+				}
+
+				// For other successful actions, consult the sequence defined by the decorator
+				const nextStepOutcome = this.handleActionSuccess()
+
+				if (nextStepOutcome === AGENT_SEQUENCE_END) {
+					// This implies an action other than 'finish' unexpectedly ended the sequence.
+					// Or, if 'finish' wasn't handled above, this would catch it.
+					// Based on current setup, AGENT_SEQUENCE_END comes from 'finish' action via handleActionSuccess.
+					// So, this path means 'finish' was processed by handleActionSuccess (e.g. if not special-cased above).
+					this.logger.info(
+						`[AutofixAgent] Action '${currentSuccessfulAction}' marked sequence end via handleActionSuccess. Transitioning to 'done'.`
+					)
+					this.setState({
+						...this.state,
+						progress: 'done',
+						currentActionAttempts: 0,
+						errorDetails: undefined,
+					})
+				} else if (nextStepOutcome) {
+					// nextStepOutcome is a HandledAgentActions string name
+					const nextActionName = nextStepOutcome
+					// Need to get the actual handler function for this action name
+					const handler = getActionHandler(nextActionName) // Re-introducing local getActionHandler
+					if (handler) {
+						await runActionHandler(nextActionName, handler)
+					} else {
+						this.logger.error(
+							`[AutofixAgent] CRITICAL: No handler found for next sequenced action: '${nextActionName}'. Transitioning to idle.`
+						)
+						this.setState({
+							...this.state,
+							currentAction: 'idle',
+							progress: 'idle',
+							currentActionAttempts: 0,
+						})
+					}
+				} else {
+					// handleActionSuccess returned undefined, meaning currentSuccessfulAction is not in sequence or has no next.
+					this.logger.info(
+						`[AutofixAgent] Action '${currentSuccessfulAction}' succeeded, but no next action defined in sequence by handleActionSuccess. Transitioning to idle.`
+					)
+					this.setState({
+						...this.state,
+						currentAction: 'idle',
+						progress: 'idle',
+						currentActionAttempts: 0,
+					})
+				}
 			})
+
 			// Handle the 'done' state by transitioning to idle/idle
 			.with({ progress: 'done' }, async (matchedState) => {
 				// Matches any action if progress is 'done'
@@ -513,5 +581,12 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		// this stage mainly signifies the end of a full pass.
 		// runActionHandler will set its progress to 'success'.
 		// If this were to fail, retries would apply as per normal action handling.
+	}
+
+	// In AutofixAgent.ts class
+	handleActionSuccess(): NextActionOutcome | undefined {
+		// Implementation will be provided by the decorator.
+		// This declaration is for type-checking within the class when onAlarm calls it.
+		throw new Error("Method 'handleActionSuccess' should be implemented by decorator.")
 	}
 }
