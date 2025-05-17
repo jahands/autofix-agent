@@ -5,52 +5,139 @@ alwaysApply: false
 ---
 # AutofixAgent Architecture Overview
 
-This document outlines the architecture of the `AutofixAgent`, located in [`apps/autofix/src/AutofixAgent.ts`](mdc:apps/autofix/src/AutofixAgent.ts). The agent is designed to automate fixes in Cloudflare Workers projects.
+This document outlines the architecture of the `AutofixAgent`, located in [`apps/autofix/src/AutofixAgent.ts`](mdc:apps/autofix/src/AutofixAgent.ts). The agent is designed to automate fixes in Cloudflare Workers projects by managing a lifecycle of actions, with built-in retries for transient issues and interruptions.
 
 **Core Components & Logic:**
 
 *   **`AutofixAgent` Class:** The primary class extending `Agent` from the Cloudflare Agents SDK. It manages the agent's lifecycle and state.
-*   **State Management:**
-    *   `AgentState`: A type defining the agent's state, including `repo`, `branch`, `currentAction` (of type `AgentAction`), `progress` (of type `ProgressStatus`), `lastStatusUpdateTimestamp`, and optional `errorDetails`.
-    *   `AgentAction`: A Zod enum representing the main operational stages of the agent (e.g., `idle`, `initialize_container`, `detect_issues`, `fix_issues`, `handle_error`).
-    *   `ProgressStatus`: A Zod enum representing the progress of an action (`idle`, `running`, `success`, `failed`).
+*   **State Management (`AgentState`):**
+    *   Defines the agent's state, including:
+        *   `repo: string`
+        *   `branch: string`
+        *   `currentAction: AgentAction` (Zod enum representing lifecycle stages: `idle`, `initialize_container`, `detect_issues`, `fix_issues`, `commit_changes`, `push_changes`, `create_pr`, `finish`, `handle_error`).
+        *   `currentActionAttempts: number` (1-indexed number of the current attempt for an active action; `0` if the agent is `idle`).
+        *   `progress: ProgressStatus` (Zod enum: `idle`, `pending`, `running`, `success`, `failed`). `'pending'` indicates an action is ready to be (re)tried.
+        *   `lastStatusUpdateTimestamp: number`
+        *   `errorDetails?: { message: string; failedAction: AgentAction }` (optional context for errors).
     *   State is persisted using `this.setState()`.
-*   **Alarm-Driven Processing:**
-    *   The agent's main work loop is triggered by alarms managed via `this.ctx.storage.setAlarm()` and handled by the `onAlarm()` method.
-    *   `setNextAlarm()` is a private helper method to schedule subsequent alarms.
-*   **`onAlarm()` Method:** This is the heart of the agent. At the start of each invocation, it clones the current state using `structuredClone(this.state)` for evaluation. It contains:
-    *   A timeout check for actions that have been `running` for too long.
-    *   **Local Helper Functions (defined within `onAlarm`):**
-        *   `setRunning(newAction: AgentAction)`: Transitions the agent to a new action, setting its `progress` to `'running'` and updating `lastStatusUpdateTimestamp`. It uses the live `this.state` for updates and logs the transition.
-        *   `runActionHandler(actionToRun: AgentAction, callback: () => Promise<void>)`: A key helper that orchestrates running an action. It calls `setRunning(actionToRun)`, then executes the provided `callback` (the actual handler logic) in a try/catch block. It then calls `this.setActionOutcome()` with `'success'` or `'failed'` based on the callback's execution.
-    *   A state machine implemented using `ts-pattern` (`match(...)`). This `match` statement takes the cloned `state.currentAction` and `state.progress` to determine the next operation.
-    *   Callbacks within the `match` statement either directly call `await runActionHandler(nextAction, () => this.handleSomeAction())` for active transitions or manage final state transitions to `'idle'` by calling `this.setState()`.
-    *   The `match` statement is designed to be `.exhaustive()` to ensure all state combinations are handled.
-*   **Action Handlers (`handle[ActionName]()`):**
-    *   Private `async` methods corresponding to most `AgentAction` values (e.g., `handleInitializeContainer`, `handleDetectIssues`, `handleError`).
-    *   These handlers perform the core operational logic for each stage. They should throw errors on failure, which will be caught by `runActionHandler`.
-    *   They **do not** call `this.setActionOutcome()` directly; this is handled by `runActionHandler`.
-*   **`setActionOutcome()` Method:** A private helper method to standardize setting the `progress` (`'success'` or `'failed'`) and `lastStatusUpdateTimestamp` of an action. It also sets `errorDetails` if an action fails and clears them on success.
-*   **Logging:**
-    *   The agent uses a `logger` instance (from `workers-tagged-logger`) initialized in the constructor and pre-tagged with static agent identifiers. The logger is further tagged with dynamic state information within methods using `@WithLogTags` decorator.
-    *   `console.error` and `console.warn` are also used for specific critical error/warning conditions (e.g., timeouts, anomalous states).
+*   **Constants:**
+    *   `TIMEOUT_DURATION_MS`: Duration after which a `'running'` action is considered timed out (e.g., 10 minutes).
+    *   `MAX_ACTION_ATTEMPTS`: Maximum number of times an action will be attempted (e.g., 3).
+*   **`currentActionPromise: Promise<void> | undefined`:** A private instance variable holding the promise of the currently executing action handler's callback. This is used to detect if a Durable Object restart might have interrupted an ongoing action.
+
+**Alarm-Driven Processing:**
+
+*   The agent's main work loop is triggered by alarms managed via `this.ctx.storage.setAlarm()` and handled by the `onAlarm()` method.
+*   `setNextAlarm()` is a private helper method to schedule subsequent alarms.
+
+**`onAlarm()` Method:** This is the heart of the agent. It no longer clones state at the beginning but operates on the live `this.state`.
+
+*   **Interruption Check:**
+    *   At the start, if `this.state.progress === 'running'` and `this.currentActionPromise === undefined`, it assumes the Durable Object may have restarted during the action.
+    *   It sets the `progress` of `this.state.currentAction` to `'pending'`, preserving its `currentActionAttempts` (which holds the number of the interrupted attempt), and updates `errorDetails`. The main `match` statement will then handle this `'pending'` state.
+*   `setNextAlarm()` is called early in the `onAlarm` execution.
+*   **Local Helper Functions (defined within `onAlarm`):**
+    *   `setRunning(newAction: AgentAction)`:
+        *   Determines the `attemptNumberOfUpcomingRun` for `newAction`:
+            *   It's `1` if `newAction` is a new type of action (different from `currentState.currentAction`) or if the agent is starting its very first action from an overall `idle` state.
+            *   It's `currentState.currentActionAttempts + 1` if `newAction` is the same as `currentState.currentAction` (i.e., it's a retry of an action that was `pending`).
+        *   Updates the agent's state: `currentAction` to `newAction`, `progress` to `'running'`, and `currentActionAttempts` to `attemptNumberOfUpcomingRun`.
+        *   Logs the start of the action with its attempt number.
+    *   `runActionHandler(actionToRun: AgentAction, callback: () => Promise<void>)`:
+        *   Calls `setRunning(actionToRun)`.
+        *   Assigns the `callback()` promise to `this.currentActionPromise`.
+        *   Executes the `callback` in a `try/catch/finally` block:
+            *   On success, calls `this.setActionOutcome({ progress: 'success' })`.
+            *   On error, calls `this.setActionOutcome({ progress: 'failed', error: e })`.
+            *   In `finally`, sets `this.currentActionPromise = undefined`.
+*   **Timeout Check:**
+    *   If `this.state.progress === 'running'` for longer than `TIMEOUT_DURATION_MS`:
+        *   Logs the timeout, including the attempt number (`this.state.currentActionAttempts`) that timed out.
+        *   Calls `this.setActionOutcome({ progress: 'failed', error: new Error(...) })`.
+        *   If `setActionOutcome` indicates the action definitively failed (i.e., `this.state.currentActionAttempts >= MAX_ACTION_ATTEMPTS`):
+            *   It calls `await runActionHandler('handle_error', () => this.handleError())`.
+            *   `onAlarm` then returns.
+        *   Otherwise (retries are still available after the timeout):
+            *   Logs that a retry will occur. The action is now in a `'failed'` state.
+            *   `onAlarm` then returns. The next alarm cycle's `match` statement will see the `'failed'` state and transition it to `'pending'`.
+*   **State Machine (using `ts-pattern`'s `match` on `this.state`):**
+    *   **Sequential Transitions & Pending Retries:** The primary way actions are started or retried. Uses combined clauses:
+        *   Example:
+            ```typescript
+            .with(
+                { currentAction: 'previous_action_name', progress: 'success' }, // Previous completed
+                { currentAction: 'current_action_name', progress: 'pending' },  // OR current is pending
+                async () => {
+                    await runActionHandler('current_action_name', () => this.handleCurrentActionName());
+                }
+            )
+            ```
+        *   This pattern is applied for all steps:
+            *   (`idle/idle` OR `initialize_container/pending`) -> run `initialize_container`
+            *   (`initialize_container/success` OR `detect_issues/pending`) -> run `detect_issues`
+            *   ... and so on, up to ...
+            *   (`create_pr/success` OR `finish/pending`) -> run `finish`
+    *   **`finish/success`**: Transitions to `idle/idle` state by calling `this.setState()` (clears `errorDetails`, sets `currentActionAttempts` to `0`).
+    *   **`handle_error/success`**: Transitions to `idle/idle` state similarly (clears `errorDetails` if error handling was itself successful, sets `currentActionAttempts` to `0`).
+    *   **Generic Failed Action Handler (`currentAction: P.not(P.union('idle', 'handle_error')), progress: 'failed'`)**:
+        *   This handles actions that fail and weren't caught by a timeout leading directly to `handle_error`.
+        *   If `this.state.currentActionAttempts < MAX_ACTION_ATTEMPTS`:
+            *   Logs the failure and that it's transitioning to `'pending'`.
+            *   Calls `this.setState()` to change `progress` to `'pending'`. `currentActionAttempts` (which holds the number of the just-failed attempt) and `errorDetails` are preserved. The action will be retried on the next alarm via the combined clauses mentioned above.
+        *   Else (if `this.state.currentActionAttempts >= MAX_ACTION_ATTEMPTS`):
+            *   Logs that max attempts are reached.
+            *   Calls `await runActionHandler('handle_error', () => this.handleError())`.
+    *   **`handle_error/pending`**: If `handle_error` itself was interrupted, this clause calls `await runActionHandler('handle_error', () => this.handleError())` to retry it.
+    *   **`handle_error/failed`**: If `handle_error` fails, logs a critical error and calls `this.setState()` to transition to `idle/idle` to prevent loops, preserving `errorDetails` and setting `currentActionAttempts` to `0`.
+    *   **`.../running`**: If an action is `running` (and hasn't timed out or been interrupted), it logs this and waits for the next alarm.
+    *   **Anomalous States**:
+        *   `idle` with `progress` other than `idle`: Logs a warning, sets state to `idle/idle`, `currentActionAttempts: 0`.
+        *   Non-`idle` action with `progress: 'idle'`: Logs a warning, sets the action's `progress` to `'pending'` (preserving `currentActionAttempts`), and updates `errorDetails` to note the anomalous recovery. This allows the standard retry mechanism to pick it up.
+    *   The `match` statement is `.exhaustive()`.
+
+**Action Handlers (`handle[ActionName]()`):**
+
+*   Private `async` methods corresponding to most `AgentAction` values (e.g., `handleInitializeContainer`, `handleDetectIssues`, `handleError`).
+*   These handlers perform the core operational logic for each stage. They should throw errors on failure, which will be caught by `runActionHandler`.
+*   They **do not** call `this.setActionOutcome()` directly; this is handled by `runActionHandler`.
+
+**`setActionOutcome()` Method:**
+
+*   A private helper method to standardize setting the outcome of an action.
+*   Signature: `setActionOutcome(options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }): boolean`
+*   Updates `lastStatusUpdateTimestamp` and `progress`.
+*   If `options.progress === 'success'`:
+    *   Clears `errorDetails`.
+    *   Logs success, including the attempt number from `this.state.currentActionAttempts`.
+    *   Returns `false` (not definitively failed).
+*   If `options.progress === 'failed'`:
+    *   `attemptThatFailed` is `this.state.currentActionAttempts` (the number of the attempt that just concluded).
+    *   Sets `errorDetails` with the error message and `failedAction`. The error variable is named `e` or `err` in the implementation.
+    *   Logs the failure, including `attemptThatFailed`.
+    *   The state's `currentActionAttempts` is *not modified* by this method; it reflects the attempt that just failed.
+    *   Returns `true` if `attemptThatFailed >= MAX_ACTION_ATTEMPTS` (definitively failed), `false` otherwise.
+
+**Logging:**
+
+*   The agent uses a `logger` instance (from `workers-tagged-logger`) initialized in the constructor and pre-tagged.
+*   `@WithLogTags` decorator is used on `start()` and `onAlarm()`.
+*   Specific `this.logger.info/warn/error` calls are used throughout for detailed operational logging (replacing previous `console.error/warn` for consistency).
+*   Comments follow stylistic preferences: lowercase for single sentences, capitalized for multi-sentence.
 
 **Key Workflow Patterns:**
 
-1.  **Start:** The `start()` method initializes the agent's state to `idle` and schedules the first alarm.
-2.  **Alarm Trigger:** `onAlarm()` is invoked, clones state, and sets the next alarm.
-3.  **Timeout Check:** If the current action (from cloned state) has been `running` for too long, `setActionOutcome()` is called for the timed-out action, and then `runActionHandler('handle_error', () => this.handleError())` is invoked.
-4.  **State Matching (in `onAlarm` using `match` on cloned state):**
-    *   If `idle/idle`, it calls `await runActionHandler('initialize_container', () => this.handleInitializeContainer())`.
-    *   If `action_X/success`, it calls `await runActionHandler('action_Y', () => this.handleActionY())`.
-    *   If `finish/success` or `handle_error/success`, it calls `this.setState()` to transition to `idle/idle` and clear `errorDetails`.
-    *   If `action_X/failed` (and `action_X` is not `handle_error`), it logs the failure and then calls `await runActionHandler('handle_error', () => this.handleError())`.
-    *   If `handle_error/failed`, it logs a critical error and calls `this.setState()` to transition to `idle/idle` to prevent loops, preserving `errorDetails`.
-    *   For other states (e.g., an action is `running`, or an anomalous state is detected), it logs the situation and waits for the next alarm.
-5.  **Action Execution (via `runActionHandler`):**
-    *   `setRunning()` is called for the target action.
-    *   The relevant `handle...()` method executes its logic.
-6.  **Outcome Setting (via `runActionHandler`):** `setActionOutcome()` is called with `'success'` or `'failed'` based on the handler's execution.
-7.  **Loop:** The next alarm triggers `onAlarm()`, and the cycle repeats based on the new state.
+1.  **Start:** `start()` method initializes state to `repo/branch/idle/idle/attempts:0` and schedules the first alarm.
+2.  **Alarm & Interruption/Timeout:** `onAlarm()` triggers. Checks for interruptions or timeouts. If an action is ongoing and gets interrupted, its state becomes `pending`. If it times out, `setActionOutcome` marks it `failed`. If a timeout leads to max attempts, `handle_error` is invoked directly.
+3.  **State Matching (`match` in `onAlarm`):**
+    *   If `idle/idle` OR `initialize_container/pending`, it calls `runActionHandler('initialize_container', ...)` (attempt 1 or retry).
+    *   If `action_X/success` OR `action_Y/pending`, it calls `runActionHandler('action_Y', ...)` (next step or retry).
+    *   If `action_X/failed` (and not `idle` or `handle_error`):
+        *   If attempts remaining: sets `action_X` to `pending`. Next alarm cycle will trigger retry via the combined clause.
+        *   Else: calls `runActionHandler('handle_error', ...)`.
+    *   `finish/success` or `handle_error/success` transitions to `idle/idle`.
+    *   `handle_error/failed` transitions to `idle/idle` (preserving error details).
+4.  **Action Execution (`runActionHandler`):** `setRunning()` updates state (action, 'running', attempt number). The handler logic executes.
+5.  **Outcome Setting (`setActionOutcome`):** Called by `runActionHandler` to record `'success'` or `'failed'` for the completed attempt.
+6.  **Loop:** The next alarm triggers `onAlarm()`, and the cycle repeats.
 
-This architecture aims for a clear, robust, and maintainable state machine for the AutofixAgent.
+This architecture aims for a clear, robust, and resilient state machine that can recover from interruptions and retry failed actions.
