@@ -1,6 +1,6 @@
 ---
 description: Jacob's Coding Preferences
-globs: *.ts, *.tsx
+globs:
 alwaysApply: false
 ---
 # Jacob's Coding Preferences
