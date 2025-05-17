@@ -1,0 +1,44 @@
+---
+description: Jacob's Coding Preferences
+globs: *.ts, *.tsx
+alwaysApply: false
+---
+# Jacob's Coding Preferences
+
+This document outlines some of Jacob's observed coding style and structural preferences. Adhering to these can lead to smoother collaboration and code that aligns more closely with his expectations.
+
+## Naming Conventions
+
+*   **Error Variables**: When catching errors, name the variable `e` or `err`. Avoid using the full word `error`.
+    *   Example (good): `catch (e) { ... }` or `catch (err) { ... }`
+    *   Example (to avoid): `catch (error) { ... }`
+
+## Commenting Style
+
+*   **Single-Sentence Comments**: If a comment is a single sentence, it should begin with a lowercase letter.
+    *   Example: `// this is a single sentence comment`
+*   **Multi-Sentence Comments**: If a comment spans multiple sentences, the first sentence should begin with an uppercase letter. Subsequent sentences should follow standard capitalization.
+    *   Example:
+        ```typescript
+        // This is the first sentence of a multi-sentence comment.
+        // this is the second sentence, and so on.
+        ```
+
+## Code Structure and Patterns
+
+*   **State Machines / Dispatch Logic**: Prefer `ts-pattern`'s `match()` expression over traditional `switch` statements. This is valued for its exhaustiveness checking and functional style.
+*   **Simplicity and Clarity**: Strive for solutions that reduce overall complexity. For instance:
+    *   If a helper function's logic can be cleanly integrated into the primary flow or managed by clearer state transitions (e.g., using a `'pending'` state effectively), that is preferred over retaining the helper.
+    *   Refactor patterns to be more intuitive (e.g., 1-indexed counters for attempts rather than 0-indexed).
+*   **Conciseness and Robustness in Patterns**: When using pattern matching (like with `ts-pattern`):
+    *   Combine related conditions into single clauses where it enhances readability and reduces redundancy (e.g., `match.with({condA}, {condB}, handler)`).
+    *   Utilize utilities like `P.not()` or `P.union()` to create more maintainable and future-proof collections of conditions, especially for excluding or including specific enum members.
+
+## Development Approach
+
+*   **Iterative Refinement**: Prefer making changes iteratively. Avoid large, sweeping changes in a single step if a more gradual approach is feasible.
+*   **Focus on Understandability**: While conciseness is good, the primary goal of refactoring and structural choices should be to improve the clarity and understandability of the code.
+
+## Logging
+
+*   **Consistency**: Prefer using a dedicated logger instance (e.g., `this.logger.info/warn/error`) over global `console.log/warn/error` for application logging, especially within classes or modules where a logger is available.
