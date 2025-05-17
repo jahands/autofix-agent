@@ -257,52 +257,38 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.with(
 				{ currentAction: 'idle', progress: 'idle' },
 				{ currentAction: 'initialize_container', progress: 'retry' },
-				async () => {
-					await runActionHandler('initialize_container', () => this.handleInitializeContainer())
-				}
+				() => runActionHandler('initialize_container', () => this.handleInitializeContainer())
 			)
 			// successful stage transitions OR current stage is marked for retry (interrupted/failed previously)
 			.with(
 				{ currentAction: 'initialize_container', progress: 'success' },
 				{ currentAction: 'detect_issues', progress: 'retry' },
-				async () => {
-					await runActionHandler('detect_issues', () => this.handleDetectIssues())
-				}
+				() => runActionHandler('detect_issues', () => this.handleDetectIssues())
 			)
 			.with(
 				{ currentAction: 'detect_issues', progress: 'success' },
 				{ currentAction: 'fix_issues', progress: 'retry' },
-				async () => {
-					await runActionHandler('fix_issues', () => this.handleFixIssues())
-				}
+				() => runActionHandler('fix_issues', () => this.handleFixIssues())
 			)
 			.with(
 				{ currentAction: 'fix_issues', progress: 'success' },
 				{ currentAction: 'commit_changes', progress: 'retry' },
-				async () => {
-					await runActionHandler('commit_changes', () => this.handleCommitChanges())
-				}
+				() => runActionHandler('commit_changes', () => this.handleCommitChanges())
 			)
 			.with(
 				{ currentAction: 'commit_changes', progress: 'success' },
 				{ currentAction: 'push_changes', progress: 'retry' },
-				async () => {
-					await runActionHandler('push_changes', () => this.handlePushChanges())
-				}
+				() => runActionHandler('push_changes', () => this.handlePushChanges())
 			)
 			.with(
 				{ currentAction: 'push_changes', progress: 'success' },
 				{ currentAction: 'create_pr', progress: 'retry' },
-				async () => {
-					await runActionHandler('create_pr', () => this.handleCreatePr())
-				}
+				() => runActionHandler('create_pr', () => this.handleCreatePr())
 			)
 			.with(
 				{ currentAction: 'create_pr', progress: 'success' },
 				{ currentAction: 'finish', progress: 'retry' },
-				async () => {
-					await runActionHandler('finish', () => this.handleFinish())
-				}
+				() => runActionHandler('finish', () => this.handleFinish())
 			)
 			// transitions to idle state (no further work to do)
 			.with({ currentAction: 'finish', progress: 'success' }, async () => {
@@ -347,12 +333,9 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				}
 			)
 			// Handle case where handle_error itself was interrupted (now 'retry' state)
-			.with({ currentAction: 'handle_error', progress: 'retry' }, async () => {
-				this.logger.info(
-					"[AutofixAgent] 'handle_error' action was interrupted (now 'retry' state). Retrying handle_error."
-				)
-				await runActionHandler('handle_error', () => this.handleError())
-			})
+			.with({ currentAction: 'handle_error', progress: 'retry' }, () =>
+				runActionHandler('handle_error', () => this.handleError())
+			)
 			// set to idle after handling errors successfully
 			.with({ currentAction: 'handle_error', progress: 'success' }, async () => {
 				this.logger.info(
