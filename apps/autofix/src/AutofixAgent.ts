@@ -50,7 +50,6 @@ type AgentState = {
 	currentAction: AgentAction // the current lifecycle stage
 	currentActionAttempts: number // 1-indexed number of the current attempt for the active action; 0 if idle.
 	progress: ProgressStatus // the progress of that stage
-	lastStatusUpdateTimestamp: number // timestamp of the last stage/progress change
 	errorDetails?: { message: string; failedAction: AgentAction } // optional error context
 }
 
@@ -85,7 +84,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				currentActionAttempts: this.state.currentActionAttempts, // Restored
 				progress: this.state.progress,
 				errorDetails: this.state.errorDetails,
-				lastStatusUpdateTimestamp: this.state.lastStatusUpdateTimestamp,
 			},
 		})
 	}
@@ -103,7 +101,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			currentActionAttempts: 0, // Restored
 			progress: 'idle',
 			errorDetails: undefined,
-			lastStatusUpdateTimestamp: Date.now(),
 		})
 
 		// start the agent via alarms.
@@ -115,7 +112,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			currentAction: this.state.currentAction,
 			progress: this.state.progress,
 			errorDetails: this.state.errorDetails,
-			lastStatusUpdateTimestamp: this.state.lastStatusUpdateTimestamp,
 			message: 'AutofixAgent started.',
 		}
 	}
@@ -150,7 +146,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				this.setState({
 					...this.state,
 					progress: 'retry',
-					lastStatusUpdateTimestamp: Date.now(),
 					errorDetails: {
 						message: interruptionMessage,
 						failedAction: interruptedAction,
@@ -164,7 +159,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				this.setState({
 					...this.state,
 					progress: 'failed', // Mark as failed to trigger handle_error transition logic properly
-					lastStatusUpdateTimestamp: Date.now(),
 					errorDetails: {
 						message: `${interruptionMessage} Max attempts reached.`,
 						failedAction: interruptedAction,
@@ -203,7 +197,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				currentAction: newAction,
 				progress: 'running',
 				currentActionAttempts: attemptNumberOfUpcomingRun,
-				lastStatusUpdateTimestamp: Date.now(),
 				// errorDetails from this.state are preserved if transitioning from a failed/retry state to retry
 			})
 			this.logger.info(
@@ -284,7 +277,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					progress: 'idle',
 					currentActionAttempts: 0, // Restored
 					errorDetails: undefined,
-					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
 			// Handle failed actions (that are not 'idle' or 'handle_error')
@@ -306,7 +298,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 							...this.state,
 							progress: 'retry', // Set to retry, the specific transition above will pick it up.
 							// currentActionAttempts remains as the number of the attempt that failed.
-							lastStatusUpdateTimestamp: Date.now(),
 						})
 					} else {
 						this.logger.info(
@@ -332,7 +323,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					progress: 'idle',
 					currentActionAttempts: 0, // Restored
 					errorDetails: undefined, // Clear error details after successful error handling
-					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
 			// Separate clause for when handle_error itself fails after running
@@ -347,7 +337,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					progress: 'idle',
 					currentActionAttempts: 0, // Restored
 					// errorDetails are preserved
-					lastStatusUpdateTimestamp: Date.now(),
 				})
 			})
 			.with({ currentAction: P.not('idle'), progress: 'running' }, async (matchedState) => {
@@ -368,7 +357,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 						progress: 'idle',
 						currentActionAttempts: 0, // Restored
 						errorDetails: undefined,
-						lastStatusUpdateTimestamp: Date.now(),
 					})
 				}
 			)
@@ -383,7 +371,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					...this.state,
 					// currentAction is already matchedState.currentAction
 					progress: 'retry',
-					lastStatusUpdateTimestamp: Date.now(),
 					errorDetails: {
 						message: `Anomalous recovery: Action '${matchedState.currentAction}' was idle, now set to retry.`,
 						failedAction: matchedState.currentAction,
@@ -403,17 +390,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	): boolean {
 		// Return type is boolean again
 		const currentAction = this.state.currentAction // Action that just finished
-		const baseUpdate: Partial<
-			Omit<AgentState, 'repo' | 'branch' | 'currentAction' | 'currentActionAttempts'>
-		> = {
-			lastStatusUpdateTimestamp: Date.now(),
-			progress: options.progress,
-		}
-
 		if (options.progress === 'success') {
 			this.setState({
 				...this.state,
-				...baseUpdate,
+				progress: options.progress,
 				// currentActionAttempts for the completed action already holds the 1-indexed attempt number it succeeded on.
 				errorDetails: undefined, // Clear error on success
 			})
@@ -438,7 +418,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 			this.setState({
 				...this.state,
-				...baseUpdate, // progress: 'failed', lastStatusUpdateTimestamp
+				progress: options.progress,
 				// currentActionAttempts remains as attemptThatFailed. It's not incremented here.
 				errorDetails: {
 					message: `Action '${currentAction}' attempt ${attemptThatFailed}/${MAX_ACTION_ATTEMPTS} failed: ${errorMessage}`,
