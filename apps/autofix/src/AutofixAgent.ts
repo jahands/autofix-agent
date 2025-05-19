@@ -129,7 +129,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			currentAction: { action: 'initialize_container', status: 'queued' },
 		})
 
-		// All further logic is handled in onAlarm
+		// All further logic is handled in onAgentAlarm
 		await this.setNextAlarm()
 
 		return {
@@ -141,8 +141,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		}
 	}
 
-	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
-	override async onAlarm(): Promise<void> {
+	@WithLogTags({ source: 'AutofixAgent', handler: 'onAgentAlarm' })
+	async onAgentAlarm(): Promise<void> {
 		this.logger
 			.withFields({
 				agentState: JSON.stringify(this.state),
@@ -271,7 +271,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	private async setNextAlarm(nextAlarm?: Date) {
 		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
-		await this.schedule(nextAlarmDate, 'onAlarm', undefined)
+		await this.schedule(nextAlarmDate, 'onAgentAlarm', undefined)
 		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
 	}
 
