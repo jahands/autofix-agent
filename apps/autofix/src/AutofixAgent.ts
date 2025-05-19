@@ -11,7 +11,8 @@ import type { Env } from './autofix.context'
 import { WithLogTags } from 'workers-tagged-logger/ts5'
 
 /**
- * The status of the agent.
+ * The status of the agent. This allows us to easily determine the
+ * state of the agent without inspecting the state of it's actions.
  */
 const AgentStatuses = [
 	{ name: 'queued', description: 'Agent is queued and waiting to start.' },
@@ -26,7 +27,9 @@ const AgentStatus = z.enum(AgentStatuses.map((a) => a.name))
 type AgentStatus = z.infer<typeof AgentStatus>
 
 /**
- * Actions/steps the agent may take.
+ * Actions/steps that the agent will take. In theory, we could
+ * support the agent taking these actions in any order, but
+ * right now they are taken in the order listed here.
  */
 const AgentActions = [
 	{ name: 'initialize_container', description: 'Initialize the container for the repository.' },
