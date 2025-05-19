@@ -145,7 +145,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	async onAgentAlarm(): Promise<void> {
 		this.logger
 			.withFields({
-				agentState: JSON.stringify(this.state),
+				agentState: this.state,
 			})
 			.info('[AutofixAgent] Alarm triggered.')
 
