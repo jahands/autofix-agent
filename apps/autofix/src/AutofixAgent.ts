@@ -73,11 +73,14 @@ type AgentState = {
 	repo: string
 	branch: string
 	agentStatus: AgentStatus
+	/**
+	 * We currently only support one action at a time, which is tracked here.
+	 */
 	currentAction: {
 		action: AgentAction
 		status: ActionStatus
+		errorDetails?: { message: string; failedAction: AgentAction }
 	}
-	errorDetails?: { message: string; failedAction: AgentAction }
 }
 
 @EnsureAgentActions(AgentActions.map((a) => a.name))
@@ -127,7 +130,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			branch,
 			agentStatus: 'queued',
 			currentAction: { action: 'initialize_container', status: 'queued' },
-			errorDetails: undefined,
 		})
 
 		// All further logic is handled in onAlarm
@@ -139,8 +141,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			currentAction: this.state.currentAction.action,
 			progress: this.state.currentAction.status,
 			agentStatus: this.state.agentStatus,
-			errorDetails: this.state.errorDetails,
-			message: 'AutofixAgent started and queued.',
+			message: 'AutofixAgent queued.',
 		}
 	}
 
@@ -191,10 +192,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				agentStatus: 'stopped',
-				currentAction: { action: interruptedActionName, status: 'stopped' },
-				errorDetails: {
-					message: interruptionMessage,
-					failedAction: interruptedActionName,
+				currentAction: {
+					action: interruptedActionName,
+					status: 'stopped',
+					errorDetails: {
+						message: interruptionMessage,
+						failedAction: interruptedActionName,
+					},
 				},
 			})
 			this.setNextAlarm()
@@ -205,7 +209,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				currentAction: { action: newActionName, status: 'running' },
-				errorDetails: this.state.errorDetails,
 			})
 			this.logger.info(`[AutofixAgent] Starting action: '${newActionName}'.`)
 		}
@@ -214,7 +217,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				currentAction: { action: newActionName, status: 'queued' },
-				errorDetails: this.state.errorDetails,
 			})
 			this.logger.info(`[AutofixAgent] Action '${newActionName}' queued.`)
 		}
@@ -265,20 +267,27 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					agentStatus: 'stopped',
 				})
 			})
+			// Only one alarm runs at a time, so if we got here, it means
+			// the agent failed to complete the previous action (or failed
+			// to mark it as stopped). In the future, we'll retry a few times.
+			// But for now, stopping the agent should be fine.
 			.with({ status: 'running' }, ({ action }) => {
-				this.logger.error(
-					`[AutofixAgent] Action '${action}' is running. Agent waits for completion.`
-				)
+				this.logger.error(`[AutofixAgent] Action '${action}' is stuck in a loop. Stopping agent.`)
 				this.setState({
 					...this.state,
 					agentStatus: 'stopped',
-					currentAction: { action, status: 'stopped' },
-					errorDetails: {
-						message: `Agent is stuck in a loop.`,
-						failedAction: action,
+					currentAction: {
+						action,
+						status: 'stopped',
+						errorDetails: {
+							message: `Agent is stuck in a loop.`,
+							failedAction: action,
+						},
 					},
 				})
 			})
+			// If we get here, it means there are no further
+			// actions to run, so we can stop the agent.
 			.with({ status: 'stopped' }, ({ action }) => {
 				this.logger.info(
 					`[AutofixAgent] No action queued after ${action} was stopped. Stopping agent.`
@@ -286,9 +295,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				this.setState({
 					...this.state,
 					agentStatus: 'stopped',
-					currentAction: { action, status: 'stopped' },
 				})
-				return
 			})
 			.exhaustive()
 	}
@@ -306,7 +313,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				currentAction: { ...this.state.currentAction, status: 'stopped' },
-				errorDetails: undefined,
 			})
 			this.logger.info(
 				`[AutofixAgent] Action '${currentActionName}' Succeeded (progress set to stopped).`
@@ -321,10 +327,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.setState({
 				...this.state,
 				agentStatus: 'stopped',
-				currentAction: { ...this.state.currentAction, status: 'stopped' },
-				errorDetails: {
-					message: `Action '${currentActionName}' failed: ${errorMessage}`,
-					failedAction: currentActionName,
+				currentAction: {
+					...this.state.currentAction,
+					status: 'stopped',
+					errorDetails: {
+						message: `Action '${currentActionName}' failed: ${errorMessage}`,
+						failedAction: currentActionName,
+					},
 				},
 			})
 		}
