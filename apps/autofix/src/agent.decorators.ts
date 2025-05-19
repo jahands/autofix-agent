@@ -21,8 +21,8 @@ export type ActionToHandlerName<A extends HandledAgentActions> = `handle${Pascal
 // Simplified Decorator Function
 export function EnsureAgentActions<
 	// Renamed from setupAgentWorkflow, directly returns the decorator
-	const THandledActions extends ReadonlyArray<HandledAgentActions>,
->(actionsToHandle: THandledActions) {
+	const THandledActions extends readonly HandledAgentActions[],
+>(_actionsToHandle: THandledActions) {
 	return function <
 		Ctor extends new (...args: any[]) => {
 			[K in THandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
