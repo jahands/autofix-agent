@@ -77,8 +77,10 @@ type ProgressStatus = z.infer<typeof ProgressStatus>
 export type AgentState = {
 	repo: string
 	branch: string
-	currentAction: AgentAction // the current lifecycle stage
-	progress: ProgressStatus // the progress of that stage
+	currentAction: {
+		action: AgentAction
+		progress: ProgressStatus
+	}
 	errorDetails?: { message: string; failedAction: AgentAction } // optional error context
 }
 
@@ -123,8 +125,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			state: {
 				repo: this.state.repo,
 				branch: this.state.branch,
-				currentAction: this.state.currentAction,
-				progress: this.state.progress,
+				currentAction: this.state.currentAction.action,
+				progress: this.state.currentAction.progress,
 				errorDetails: this.state.errorDetails,
 			},
 		})
@@ -139,8 +141,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.setState({
 			repo,
 			branch,
-			currentAction: 'idle',
-			progress: 'idle',
+			currentAction: { action: 'idle', progress: 'idle' },
 			errorDetails: undefined,
 		})
 
@@ -150,8 +151,8 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		return {
 			repo: this.state.repo,
 			branch: this.state.branch,
-			currentAction: this.state.currentAction,
-			progress: this.state.progress,
+			currentAction: this.state.currentAction.action,
+			progress: this.state.currentAction.progress,
 			errorDetails: this.state.errorDetails,
 			message: 'AutofixAgent started.',
 		}
@@ -171,17 +172,19 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	override async onAlarm(): Promise<void> {
 		this.logger.info('[AutofixAgent] Alarm triggered.')
 
-		if (this.state.progress === 'running' && this.currentActionPromise === undefined) {
-			const interruptedAction = this.state.currentAction
-			const interruptionMessage = `Action '${interruptedAction}' may have been interrupted by a restart. Transitioning to idle with error.`
+		if (
+			this.state.currentAction.progress === 'running' &&
+			this.currentActionPromise === undefined
+		) {
+			const interruptedActionName = this.state.currentAction.action
+			const interruptionMessage = `Action '${interruptedActionName}' may have been interrupted by a restart. Transitioning to idle with error.`
 			this.logger.warn(`[AutofixAgent] Interruption: ${interruptionMessage}`)
 			this.setState({
 				...this.state,
-				currentAction: 'idle',
-				progress: 'idle',
+				currentAction: { action: 'idle', progress: 'idle' },
 				errorDetails: {
 					message: interruptionMessage,
-					failedAction: interruptedAction,
+					failedAction: interruptedActionName,
 				},
 			})
 			return // End processing for this alarm cycle
@@ -189,14 +192,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 		this.setNextAlarm()
 
-		const setRunning = (newAction: AgentAction): void => {
+		const setRunning = (newActionName: AgentAction): void => {
 			this.setState({
 				...this.state,
-				currentAction: newAction,
-				progress: 'running',
+				currentAction: { action: newActionName, progress: 'running' },
 				errorDetails: this.state.errorDetails,
 			})
-			this.logger.info(`[AutofixAgent] Starting action: '${newAction}'.`)
+			this.logger.info(`[AutofixAgent] Starting action: '${newActionName}'.`)
 		}
 
 		const runActionHandler = async (actionToRun: AgentAction, callback: () => Promise<void>) => {
@@ -212,123 +214,101 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			}
 		}
 
-		await match({
-			currentAction: this.state.currentAction,
-			progress: this.state.progress,
-		})
+		await match(this.state.currentAction)
 			.returnType<Promise<void>>()
-			.with({ currentAction: 'idle', progress: 'idle' }, () =>
+			.with({ action: 'idle', progress: 'idle' }, () =>
 				runActionHandler('initialize_container', () => this.handleInitializeContainer())
 			)
-			.with({ currentAction: 'initialize_container', progress: 'success' }, () =>
+			.with({ action: 'initialize_container', progress: 'success' }, () =>
 				runActionHandler('detect_issues', () => this.handleDetectIssues())
 			)
-			.with({ currentAction: 'detect_issues', progress: 'success' }, () =>
+			.with({ action: 'detect_issues', progress: 'success' }, () =>
 				runActionHandler('fix_issues', () => this.handleFixIssues())
 			)
-			.with({ currentAction: 'fix_issues', progress: 'success' }, () =>
+			.with({ action: 'fix_issues', progress: 'success' }, () =>
 				runActionHandler('commit_changes', () => this.handleCommitChanges())
 			)
-			.with({ currentAction: 'commit_changes', progress: 'success' }, () =>
+			.with({ action: 'commit_changes', progress: 'success' }, () =>
 				runActionHandler('push_changes', () => this.handlePushChanges())
 			)
-			.with({ currentAction: 'push_changes', progress: 'success' }, () =>
+			.with({ action: 'push_changes', progress: 'success' }, () =>
 				runActionHandler('create_pr', () => this.handleCreatePr())
 			)
-			.with({ currentAction: 'create_pr', progress: 'success' }, () =>
+			.with({ action: 'create_pr', progress: 'success' }, () =>
 				runActionHandler('finish', () => this.handleFinish())
 			)
-			.with({ currentAction: 'finish', progress: 'success' }, async () => {
+			.with({ action: 'finish', progress: 'success' }, async () => {
 				this.logger.info(
 					"[AutofixAgent] 'finish' action successful. Transitioning to 'cycle_complete' action."
 				)
 				this.setState({
 					...this.state,
-					currentAction: 'cycle_complete',
-					progress: 'success',
+					currentAction: { action: 'cycle_complete', progress: 'success' },
 					errorDetails: undefined,
 				})
 			})
-			.with({ currentAction: 'cycle_complete', progress: 'success' }, async () => {
+			.with({ action: 'cycle_complete', progress: 'success' }, async () => {
 				this.logger.info(
 					`[AutofixAgent] Action 'cycle_complete' acknowledged. Transitioning to idle/idle.`
 				)
 				this.setState({
 					...this.state,
-					currentAction: 'idle',
-					progress: 'idle',
+					currentAction: { action: 'idle', progress: 'idle' },
 					errorDetails: undefined,
 				})
 			})
 			.with(
-				{
-					currentAction: P.not(P.union('idle', 'cycle_complete')),
-					progress: 'failed',
-				},
-				async ({ currentAction, progress }) => {
+				{ action: P.not(P.union('idle', 'cycle_complete')), progress: 'failed' },
+				async ({ action, progress }) => {
 					this.logger.error(
-						`[AutofixAgent] Action '${currentAction}' FAILED. Transitioning to idle with error.`
-					)
-					// errorDetails should have been set by setActionOutcome.
-					this.setState({
-						...this.state,
-						currentAction: 'idle',
-						progress: 'idle',
-						// errorDetails are preserved from the failed action
-					})
-				}
-			)
-			.with(
-				{ currentAction: 'cycle_complete', progress: P.not('success') },
-				async (matchedState) => {
-					this.logger.warn(
-						`[AutofixAgent] Anomalous state: 'cycle_complete' action found with progress '${matchedState.progress}'. Transitioning to idle/idle.`
+						`[AutofixAgent] Action '${action}' FAILED. Transitioning to idle with error.`
 					)
 					this.setState({
 						...this.state,
-						currentAction: 'idle',
-						progress: 'idle',
-						errorDetails: undefined,
+						currentAction: { action: 'idle', progress: 'idle' },
 					})
 				}
 			)
+			.with({ action: 'cycle_complete', progress: P.not('success') }, async (matchedState) => {
+				this.logger.warn(
+					`[AutofixAgent] Anomalous state: 'cycle_complete' action found with progress '${matchedState.progress}'. Transitioning to idle/idle.`
+				)
+				this.setState({
+					...this.state,
+					currentAction: { action: 'idle', progress: 'idle' },
+					errorDetails: undefined,
+				})
+			})
 			.with(
-				{ currentAction: P.not(P.union('idle', 'cycle_complete')), progress: 'running' },
+				{ action: P.not(P.union('idle', 'cycle_complete')), progress: 'running' },
 				async (matchedState) => {
 					this.logger.info(
-						`[AutofixAgent] Action '${matchedState.currentAction}' is 'running'. Agent waits for completion.`
+						`[AutofixAgent] Action '${matchedState.action}' is 'running'. Agent waits for completion.`
 					)
 				}
 			)
+			.with({ action: 'idle', progress: P.not('idle') }, async (matchedState) => {
+				this.logger.warn(
+					`[AutofixAgent] Anomalous state: currentAction is 'idle' but progress is '${matchedState.progress}'. Resetting to idle/idle.`
+				)
+				this.setState({
+					...this.state,
+					currentAction: { action: 'idle', progress: 'idle' },
+					errorDetails: undefined,
+				})
+			})
 			.with(
-				// For idle action, any progress other than 'idle' is anomalous.
-				{ currentAction: 'idle', progress: P.not('idle') },
+				{ action: P.not(P.union('idle', 'cycle_complete')), progress: 'idle' },
 				async (matchedState) => {
 					this.logger.warn(
-						`[AutofixAgent] Anomalous state: currentAction is 'idle' but progress is '${matchedState.progress}'. Resetting to idle/idle.`
+						`[AutofixAgent] Anomalous state: Action '${matchedState.action}' has progress 'idle'. This is unexpected. Transitioning to idle with error.`
 					)
 					this.setState({
 						...this.state,
-						currentAction: 'idle',
-						progress: 'idle',
-						errorDetails: undefined,
-					})
-				}
-			)
-			// For any other action (not idle, not cycle_complete) that is somehow in 'idle' progress state
-			.with(
-				{ currentAction: P.not(P.union('idle', 'cycle_complete')), progress: 'idle' },
-				async (matchedState) => {
-					this.logger.warn(
-						`[AutofixAgent] Anomalous state: Action '${matchedState.currentAction}' has progress 'idle'. This is unexpected. Transitioning to idle with error.`
-					)
-					this.setState({
-						...this.state,
-						currentAction: 'idle',
-						progress: 'idle',
+						currentAction: { action: 'idle', progress: 'idle' },
 						errorDetails: {
-							message: `Anomalous state: Action '${matchedState.currentAction}' found with progress 'idle'.`,
-							failedAction: matchedState.currentAction,
+							message: `Anomalous state: Action '${matchedState.action}' found with progress 'idle'.`,
+							failedAction: matchedState.action,
 						},
 					})
 				}
@@ -344,27 +324,27 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	private setActionOutcome(
 		options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }
 	): void {
-		const currentAction = this.state.currentAction
+		const currentActionName = this.state.currentAction.action
 		if (options.progress === 'success') {
 			this.setState({
 				...this.state,
-				progress: options.progress,
+				currentAction: { ...this.state.currentAction, progress: 'success' },
 				errorDetails: undefined,
 			})
-			this.logger.info(`[AutofixAgent] Action '${currentAction}' Succeeded.`)
+			this.logger.info(`[AutofixAgent] Action '${currentActionName}' Succeeded.`)
 		} else {
 			const e = options.error
 			const errorMessage = e instanceof Error ? e.message : 'Unknown error during action execution'
 			this.logger.error(
-				`[AutofixAgent] Action '${currentAction}' FAILED. Error: ${errorMessage}`,
+				`[AutofixAgent] Action '${currentActionName}' FAILED. Error: ${errorMessage}`,
 				e instanceof Error ? e.stack : undefined
 			)
 			this.setState({
 				...this.state,
-				progress: options.progress, // This will be 'failed'
+				currentAction: { ...this.state.currentAction, progress: 'failed' },
 				errorDetails: {
-					message: `Action '${currentAction}' failed: ${errorMessage}`,
-					failedAction: currentAction,
+					message: `Action '${currentActionName}' failed: ${errorMessage}`,
+					failedAction: currentActionName,
 				},
 			})
 		}
