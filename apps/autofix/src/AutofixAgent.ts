@@ -77,6 +77,7 @@ type ProgressStatus = z.infer<typeof ProgressStatus>
 export type AgentState = {
 	repo: string
 	branch: string
+	agentStatus: AgentStatus
 	currentAction: {
 		action: AgentAction
 		progress: ProgressStatus
@@ -121,15 +122,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 	constructor(ctx: AgentContext, env: Env) {
 		super(ctx, env)
-		this.logger = logger.withTags({
-			state: {
-				repo: this.state.repo,
-				branch: this.state.branch,
-				currentAction: this.state.currentAction.action,
-				progress: this.state.currentAction.progress,
-				errorDetails: this.state.errorDetails,
-			},
-		})
+		this.logger = logger
 	}
 
 	/**
@@ -137,10 +130,20 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	@WithLogTags({ source: 'AutofixAgent', handler: 'start' })
 	public async start({ repo, branch }: { repo: string; branch: string }) {
+		this.logger = logger.withTags({
+			state: {
+				repo,
+				branch,
+				agentStatus: 'running',
+				currentAction: { action: 'idle', progress: 'idle' },
+			},
+		})
+
 		this.logger.info(`[AutofixAgent] Starting for repo: ${repo}, branch: ${branch}`)
 		this.setState({
 			repo,
 			branch,
+			agentStatus: 'running',
 			currentAction: { action: 'idle', progress: 'idle' },
 			errorDetails: undefined,
 		})
