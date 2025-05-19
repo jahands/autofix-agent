@@ -206,90 +206,31 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			return
 		}
 
-		const setQueued = (newActionName: AgentAction): void => {
-			this.setState({
-				...this.state,
-				currentAction: { action: newActionName, status: 'queued' },
-			})
-			this.logger.info(`[AutofixAgent] Action '${newActionName}' queued.`)
-		}
-
-		const setRunning = (newActionName: AgentAction): void => {
-			this.setState({
-				...this.state,
-				currentAction: { action: newActionName, status: 'running' },
-			})
-			this.logger.info(`[AutofixAgent] Starting action: '${newActionName}'.`)
-		}
-
-		const setStopped = (actionName: AgentAction, error?: Error | unknown): void => {
-			if (error === undefined) {
-				this.setState({
-					...this.state,
-					currentAction: { action: actionName, status: 'stopped' },
-				})
-				this.logger.info(`[AutofixAgent] Action '${actionName}' stopped.`)
-			} else {
-				const errorMessage =
-					error instanceof Error ? error.message : 'Unknown error during action execution'
-				this.logger.error(
-					`[AutofixAgent] Action '${actionName}' FAILED. Error: ${errorMessage}. Agent stopping.`,
-					error instanceof Error ? error.stack : undefined
-				)
-				this.setState({
-					...this.state,
-					currentAction: {
-						action: actionName,
-						status: 'stopped',
-						error: { message: errorMessage },
-					},
-				})
-			}
-		}
-
-		/**
-		 * Run a queued action. Automatically updates running/stopped statuses.
-		 */
-		const runActionHandler = async (actionName: AgentAction, handlerFn: () => Promise<void>) => {
-			setRunning(actionName)
-			// Track the current action's promise so that we can detect when
-			// the DO got inturrupted while it was running.
-			this.currentActionPromise = handlerFn()
-			try {
-				await this.currentActionPromise
-				setStopped(actionName)
-			} catch (e) {
-				setStopped(actionName, e)
-			} finally {
-				this.currentActionPromise = undefined
-			}
-		}
-
 		// agent actions
 		await match(this.state.currentAction)
 			// handle queued actions
 			.with({ action: 'initialize_container', status: 'queued' }, async () => {
-				await runActionHandler('initialize_container', this.handleInitializeContainer)
-				setQueued('detect_issues')
+				await this.runActionHandler('initialize_container', this.handleInitializeContainer)
+				this.setQueued('detect_issues')
 			})
 			.with({ action: 'detect_issues', status: 'queued' }, async () => {
-				await runActionHandler('detect_issues', this.handleDetectIssues)
-				setQueued('fix_issues')
+				await this.runActionHandler('detect_issues', this.handleDetectIssues)
+				this.setQueued('fix_issues')
 			})
 			.with({ action: 'fix_issues', status: 'queued' }, async () => {
-				await runActionHandler('fix_issues', this.handleFixIssues)
-				setQueued('commit_changes')
+				await this.runActionHandler('fix_issues', this.handleFixIssues)
+				this.setQueued('commit_changes')
 			})
 			.with({ action: 'commit_changes', status: 'queued' }, async () => {
-				await runActionHandler('commit_changes', this.handleCommitChanges)
-				setQueued('push_changes')
+				await this.runActionHandler('commit_changes', this.handleCommitChanges)
+				this.setQueued('push_changes')
 			})
 			.with({ action: 'push_changes', status: 'queued' }, async () => {
-				await runActionHandler('push_changes', this.handlePushChanges)
-				setQueued('create_pr')
+				await this.runActionHandler('push_changes', this.handlePushChanges)
+				this.setQueued('create_pr')
 			})
 			.with({ action: 'create_pr', status: 'queued' }, async () => {
-				await runActionHandler('create_pr', this.handleCreatePr)
+				await this.runActionHandler('create_pr', this.handleCreatePr)
 
 				this.logger.info('[AutofixAgent] Agent is done! Stopping.')
 				this.setState({
@@ -376,5 +317,65 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info('[AutofixAgent] Mock: Creating PR...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] PR created.')
+	}
+
+	private setQueued(actionName: AgentAction): void {
+		this.setState({
+			...this.state,
+			currentAction: { action: actionName, status: 'queued' },
+		})
+		this.logger.info(`[AutofixAgent]Action '${actionName}' queued.`)
+	}
+
+	private setRunning(actionName: AgentAction): void {
+		this.setState({
+			...this.state,
+			currentAction: { action: actionName, status: 'running' },
+		})
+		this.logger.info(`[AutofixAgent] Action '${actionName}' started.`)
+	}
+
+	private setStopped(actionName: AgentAction, error?: Error | unknown): void {
+		if (error === undefined) {
+			this.setState({
+				...this.state,
+				currentAction: { action: actionName, status: 'stopped' },
+			})
+			this.logger.info(`[AutofixAgent] Action '${actionName}' stopped.`)
+		} else {
+			const errorMessage =
+				error instanceof Error ? error.message : 'Unknown error during action execution'
+			this.logger.error(
+				`[AutofixAgent] Action '${actionName}' FAILED. Error: ${errorMessage}. Agent stopping.`,
+				error instanceof Error ? error.stack : undefined
+			)
+			this.setState({
+				...this.state,
+				agentStatus: 'stopped', // Stop the agent if an action fails
+				currentAction: {
+					action: actionName,
+					status: 'stopped',
+					error: { message: errorMessage },
+				},
+			})
+		}
+	}
+
+	/**
+	 * Run a queued action. Automatically updates running/stopped statuses.
+	 */
+	private async runActionHandler(actionName: AgentAction, handlerFn: () => Promise<void>) {
+		this.setRunning(actionName)
+		// Track the current action's promise so that we can detect when
+		// the DO got inturrupted while it was running.
+		this.currentActionPromise = handlerFn.bind(this)()
+		try {
+			await this.currentActionPromise
+			this.setStopped(actionName)
+		} catch (e) {
+			this.setStopped(actionName, e)
+		} finally {
+			this.currentActionPromise = undefined
+		}
 	}
 }
