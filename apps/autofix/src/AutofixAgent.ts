@@ -163,9 +163,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	override async onAlarm(): Promise<void> {
 		this.logger.info('[AutofixAgent] Alarm triggered.')
 
+		// Handle the case where the agent was interrupted by a DO restart.
+		// TODO: Add retries when this happens.
 		if (this.state.currentAction.status === 'running' && this.currentActionPromise === undefined) {
 			const interruptedActionName = this.state.currentAction.action
-			const interruptionMessage = `Action '${interruptedActionName}' was interrupted by a restart. Agent stopping.`
+			const interruptionMessage = `Action '${interruptedActionName}' was interrupted (possibly by a DO restart). Stopping agent.`
 			this.logger.warn(`[AutofixAgent] Interruption: ${interruptionMessage}`)
 			this.setState({
 				...this.state,
@@ -185,7 +187,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		}
 
 		const getActionHandler = (actionName: AgentAction): (() => Promise<void>) | undefined => {
-			// All other AgentAction values are expected to have handlers.
 			return match(actionName)
 				.with('initialize_container', () => () => this.handleInitializeContainer())
 				.with('detect_issues', () => () => this.handleDetectIssues())
