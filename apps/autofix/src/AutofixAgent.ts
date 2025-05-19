@@ -130,7 +130,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		})
 
 		// All further logic is handled in onAlarm
-		this.setNextAlarm(datePlus('1 second'))
+		this.setNextAlarm()
 
 		return {
 			repo: this.state.repo,
@@ -144,10 +144,10 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 	/**
 	 * Schedules the next alarm for the agent.
-	 * @param nextAlarm Optional specific date for the next alarm. Default:  5 seconds from now.
+	 * @param nextAlarm Optional specific date for the next alarm. Default: 1 seconds from now.
 	 */
 	private setNextAlarm(nextAlarm?: Date) {
-		const nextAlarmDate = nextAlarm ?? datePlus('5 seconds')
+		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
 		void this.ctx.storage.setAlarm(nextAlarmDate)
 		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
 	}
