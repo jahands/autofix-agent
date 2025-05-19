@@ -88,13 +88,8 @@ type AgentState = {
 
 @EnsureAgentActions(AgentActions.map((a) => a.name))
 export class AutofixAgent extends Agent<Env, AgentState> {
-	// define methods on the Agent:
+	// Agents API reference:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
-	//
-	// every Agent has built in state via this.setState and this.sql
-	// built-in scheduling via this.schedule
-	// agents support WebSockets, HTTP requests, state synchronization and
-	// can run for seconds, minutes or hours: as long as the tasks need.
 
 	/**
 	 * Context logger with tags added in the constructor so that we
