@@ -143,7 +143,11 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
 	async onAlarm(): Promise<void> {
-		this.logger.info('[AutofixAgent] Alarm triggered.')
+		this.logger
+			.withFields({
+				agentState: JSON.stringify(this.state),
+			})
+			.info('[AutofixAgent] Alarm triggered.')
 
 		// handle Agent statuses
 		const isStopped = await match(this.state.agentStatus)
