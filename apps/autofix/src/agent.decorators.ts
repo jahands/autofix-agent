@@ -1,5 +1,4 @@
-import type { AgentAction, AgentState } from './AutofixAgent' // Adjust path as needed
-import type { logger as agentLogger } from './logger' // Assuming a base logger can be imported
+import type { AgentAction } from './AutofixAgent' // Adjust path as needed
 
 // Define which actions are excluded from needing explicit handlers defined by the decorator
 type ExcludedActions = 'idle' | 'cycle_complete'
@@ -17,111 +16,26 @@ type PascalCase<S extends string> = S extends `${infer P1}_${infer P2}`
 // e.g., 'initialize_container' -> 'handleInitializeContainer'
 export type ActionToHandlerName<A extends HandledAgentActions> = `handle${PascalCase<A>}`
 
-// Sentinel for the end of an action sequence
-export const AGENT_SEQUENCE_END = Symbol('AGENT_SEQUENCE_END')
-export type NextActionOutcome = HandledAgentActions | typeof AGENT_SEQUENCE_END
+// Removed AGENT_SEQUENCE_END, NextActionOutcome, ActionSequenceConfig, AgentWithStateForSequence
 
-export type ActionSequenceConfig = {
-	// Key is a handled action that is part of a sequence,
-	// value is the next action or the end sentinel.
-	// Making it a partial map allows actions to not be part of a sequence if needed,
-	// though for a linear workflow, all sequenced actions would be present.
-	[ActionName in HandledAgentActions]?: NextActionOutcome
-}
-
-// Interface for what an instance of the decorated class should provide to handleActionSuccess
-// This is a subset of AutofixAgent's properties and state structure.
-interface AgentWithStateForSequence {
-	state: Pick<AgentState, 'currentAction'>
-	logger: typeof agentLogger // Assuming logger is available on 'this'
-	// Add other methods/properties if handleActionSuccess needs them, e.g., setState if it were to modify state directly.
-}
-
-// Main setup function that returns the decorator and helper
-export function setupAgentWorkflow<
-	const TAllHandledActions extends readonly HandledAgentActions[],
-	const TSequenceConfig extends ActionSequenceConfig,
->(
-	handledActionsList: TAllHandledActions, // Renamed for clarity from handledActions
-	sequenceConfig: TSequenceConfig
-) {
-	// Helper function to get handler name string
-	function getActionHandlerName(
-		actionName: HandledAgentActions
-	): ActionToHandlerName<typeof actionName> {
-		// Re-implement PascalCase logic here directly or ensure PascalCase type utility is robust for this runtime use
-		const pascalCasedAction = actionName
-			.split('_')
-			.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-			.join('')
-		return `handle${pascalCasedAction}` as ActionToHandlerName<typeof actionName>
-	}
-
-	// The class decorator, now conforming to ES Decorator signature
-	const ConfigureAgentWorkflow = function <
-		TInstance extends AgentWithStateForSequence & {
-			// This mapped type enforces that for each action name in the TAllHandledActions tuple,
-			// the class instance must have a method with the derived handler name,
-			// and that method must match the expected signature: () => Promise<void>.
-			[K in TAllHandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
-		} & { [key: string]: any }, // Index signature for dynamic access
-		Ctor extends new (...args: any[]) => TInstance, // Ctor is the class constructor type
-	>(
-		value: Ctor, // The class constructor itself
-		context: ClassDecoratorContext // ES Decorator context
-	): Ctor | void {
-		// Decorator can return the original/new constructor or void
-
-		// Ensure the context kind is 'class' for safety, though it will be for a class decorator
+// Simplified Decorator Function
+export function EnsureAgentActions<
+	// Renamed from setupAgentWorkflow, directly returns the decorator
+	const THandledActions extends ReadonlyArray<HandledAgentActions>,
+>(actionsToHandle: THandledActions) {
+	return function <
+		Ctor extends new (...args: any[]) => {
+			[K in THandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
+		} & { [key: string]: any }, // Index signature for dynamic access, optional but can be kept for now
+	>(value: Ctor, context: ClassDecoratorContext): Ctor | void {
 		if (context.kind !== 'class') {
-			throw new Error('ConfigureAgentWorkflow must be used as a class decorator.')
+			throw new Error('EnsureAgentActions must be used as a class decorator.')
 		}
 
-		// Add the handleActionSuccess method to the prototype of the decorated class
-		value.prototype.handleActionSuccess = function (
-			this: TInstance // `this` will be an instance of the decorated class
-		): NextActionOutcome | undefined {
-			const currentAction = this.state.currentAction as HandledAgentActions // Cast needed as currentAction can be 'idle'
+		// This decorator now ONLY performs compile-time type checking for handler existence and signature.
+		// It no longer injects any methods like handleActionSuccess.
 
-			if (!Object.prototype.hasOwnProperty.call(sequenceConfig, currentAction)) {
-				// This successful action is not part of the defined sequence config,
-				// or it's an action that shouldn't call this (e.g. 'idle' if it somehow reached here)
-				this.logger.warn(
-					`[AutofixAgent.handleActionSuccess] Action '${currentAction}' succeeded but is not in sequenceConfig or has no defined next step.`
-				)
-				return undefined // Or throw an error, or return a specific sentinel
-			}
-
-			const nextStep = sequenceConfig[currentAction]
-
-			if (nextStep === AGENT_SEQUENCE_END) {
-				this.logger.info(
-					`[AutofixAgent.handleActionSuccess] Action '${currentAction}' succeeded, sequence ended.`
-				)
-				return AGENT_SEQUENCE_END
-			} else if (nextStep) {
-				// nextStep is a HandledAgentActions
-				this.logger.info(
-					`[AutofixAgent.handleActionSuccess] Action '${currentAction}' succeeded. Next action: '${nextStep}'.`
-				)
-				return nextStep
-			}
-			// Should not be reached if sequenceConfig is well-formed for all HandledAgentActions in a sequence
-			this.logger.warn(
-				`[AutofixAgent.handleActionSuccess] No next step defined for successful action '${currentAction}' in sequenceConfig.`
-			)
-			return undefined
-		}
-
-		// Type checking for handler existence (compile-time, ensured by generic constraints on Ctor)
-		// No specific runtime checks for handler methods added here, relying on TS for that.
-
-		return value // Return the original (now modified) constructor
-	}
-
-	return {
-		ConfigureAgentWorkflow,
-		getActionHandlerName,
+		return value // Return the original constructor
 	}
 }
 

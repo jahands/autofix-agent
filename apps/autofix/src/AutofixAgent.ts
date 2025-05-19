@@ -1,16 +1,10 @@
 import { Agent } from 'agents'
-import { datePlus, ms } from 'itty-time'
+import { datePlus } from 'itty-time'
 import { match, P } from 'ts-pattern'
 import { z } from 'zod'
 
 import { logger } from './logger'
-import {
-	setupAgentWorkflow,
-	AGENT_SEQUENCE_END,
-	type HandledAgentActions,
-	type ActionSequenceConfig,
-	type NextActionOutcome,
-} from './agent.decorators'
+import { EnsureAgentActions, type HandledAgentActions } from './agent.decorators'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
@@ -74,24 +68,9 @@ const autofixAgentHandledActions: HandledAgentActions[] = [
 	// 'handle_error', // Remains removed
 ]
 
-// Define the action sequence for AutofixAgent
-const autofixAgentSequence: ActionSequenceConfig = {
-	initialize_container: 'detect_issues',
-	detect_issues: 'fix_issues',
-	fix_issues: 'commit_changes',
-	commit_changes: 'push_changes',
-	push_changes: 'create_pr',
-	create_pr: 'finish',
-	finish: AGENT_SEQUENCE_END, // 'finish' action leads to the end of the sequence
-}
+// Removed autofixAgentSequence and setupAgentWorkflow call
 
-// Call the setup function and destructure its return
-const { ConfigureAgentWorkflow, getActionHandlerName } = setupAgentWorkflow(
-	autofixAgentHandledActions,
-	autofixAgentSequence
-)
-
-@ConfigureAgentWorkflow
+@EnsureAgentActions(autofixAgentHandledActions) // Simplified decorator application
 export class AutofixAgent extends Agent<Env, AgentState> {
 	// define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
@@ -216,51 +195,34 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.with({ currentAction: 'idle', progress: 'idle' }, () =>
 				runActionHandler('initialize_container', () => this.handleInitializeContainer())
 			)
-
-			.with({ progress: 'success' }, async (matchedState) => {
-				const currentSuccessfulAction = matchedState.currentAction
-
-				if (currentSuccessfulAction === 'finish') {
-					this.logger.info(
-						"[AutofixAgent] 'finish' action successful. Transitioning to 'cycle_complete' action."
-					)
-					this.setState({
-						...this.state,
-						currentAction: 'cycle_complete',
-						progress: 'success',
-						errorDetails: undefined,
-					})
-					return
-				}
-
-				const nextStepName = this.handleActionSuccess()
-
-				if (nextStepName === AGENT_SEQUENCE_END) {
-					this.logger.info(
-						`[AutofixAgent] Action '${currentSuccessfulAction}' marked sequence end via handleActionSuccess. Transitioning to 'cycle_complete' action.`
-					)
-					this.setState({
-						...this.state,
-						currentAction: 'cycle_complete',
-						progress: 'success',
-						errorDetails: undefined,
-					})
-				} else if (nextStepName) {
-					const handlerNameString = getActionHandlerName(nextStepName)
-					if (typeof this[handlerNameString] === 'function') {
-						await runActionHandler(nextStepName, () => this[handlerNameString]())
-					} else {
-						this.logger.error(
-							`[AutofixAgent] CRITICAL: Handler method '${handlerNameString}' not found for action '${nextStepName}'. Transitioning to idle.`
-						)
-						this.setState({ ...this.state, currentAction: 'idle', progress: 'idle' })
-					}
-				} else {
-					this.logger.info(
-						`[AutofixAgent] Action '${currentSuccessfulAction}' succeeded, but no next action defined in sequence by handleActionSuccess. Transitioning to idle.`
-					)
-					this.setState({ ...this.state, currentAction: 'idle', progress: 'idle' })
-				}
+			.with({ currentAction: 'initialize_container', progress: 'success' }, () =>
+				runActionHandler('detect_issues', () => this.handleDetectIssues())
+			)
+			.with({ currentAction: 'detect_issues', progress: 'success' }, () =>
+				runActionHandler('fix_issues', () => this.handleFixIssues())
+			)
+			.with({ currentAction: 'fix_issues', progress: 'success' }, () =>
+				runActionHandler('commit_changes', () => this.handleCommitChanges())
+			)
+			.with({ currentAction: 'commit_changes', progress: 'success' }, () =>
+				runActionHandler('push_changes', () => this.handlePushChanges())
+			)
+			.with({ currentAction: 'push_changes', progress: 'success' }, () =>
+				runActionHandler('create_pr', () => this.handleCreatePr())
+			)
+			.with({ currentAction: 'create_pr', progress: 'success' }, () =>
+				runActionHandler('finish', () => this.handleFinish())
+			)
+			.with({ currentAction: 'finish', progress: 'success' }, async () => {
+				this.logger.info(
+					"[AutofixAgent] 'finish' action successful. Transitioning to 'cycle_complete' action."
+				)
+				this.setState({
+					...this.state,
+					currentAction: 'cycle_complete',
+					progress: 'success',
+					errorDetails: undefined,
+				})
 			})
 			.with({ currentAction: 'cycle_complete', progress: 'success' }, async () => {
 				this.logger.info(
@@ -435,12 +397,5 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		// this stage mainly signifies the end of a full pass.
 		// runActionHandler will set its progress to 'success'.
 		// If this were to fail, retries would apply as per normal action handling.
-	}
-
-	// In AutofixAgent.ts class
-	handleActionSuccess(): NextActionOutcome | undefined {
-		// Implementation will be provided by the decorator.
-		// This declaration is for type-checking within the class when onAlarm calls it.
-		throw new Error("Method 'handleActionSuccess' should be implemented by decorator.")
 	}
 }
