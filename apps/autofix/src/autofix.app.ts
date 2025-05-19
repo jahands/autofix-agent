@@ -8,7 +8,7 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
 import { generateObject, generateText } from 'ai'
-import { WorkersAiModels } from './ai-models'
+import { OpenAIModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
 import { streamText } from 'hono/streaming'
 
@@ -174,9 +174,11 @@ const app = new Hono<App>()
 				await stream.writeln(prompt)
 				await stream.writeln('Analyzing...')
 
+				const model = OpenAIModels.GPT4o()
+				const maxTokens = 10_000
 				const analysis = await generateText({
-					maxTokens: 100_000,
-					model: WorkersAiModels.Llama4,
+					maxTokens,
+					model,
 					system: 'You are an expert at investigating Build failures in CI systems',
 					prompt,
 				})
@@ -185,8 +187,8 @@ const app = new Hono<App>()
 
 				await stream.writeln('Generating patch...')
 				const patch = await generateObject({
-					maxTokens: 100_000,
-					model: WorkersAiModels.Llama4,
+					maxTokens,
+					model,
 					prompt: `
 					Generate the set of new files to create given the previous analysis below:
 					${analysis.text}
