@@ -98,12 +98,6 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	logger: typeof logger
 
-	/**
-	 * Promise for the current running action. This is used
-	 * to help us detect when a running action has timed out.
-	 */
-	private currentActionPromise: Promise<void> | undefined
-
 	constructor(ctx: AgentContext, env: Env) {
 		super(ctx, env)
 		this.logger = logger
@@ -173,25 +167,6 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			.exhaustive()
 
 		if (isStopped) {
-			return
-		}
-
-		// Handle the case where the agent was interrupted by a DO restart.
-		// TODO: Add retries when this happens.
-		if (this.state.currentAction.status === 'running' && this.currentActionPromise === undefined) {
-			const interruptedActionName = this.state.currentAction.action
-			const interruptionMessage = `Action '${interruptedActionName}' was interrupted (possibly by a DO restart). Stopping agent.`
-			this.logger.warn(`[AutofixAgent] Interruption: ${interruptionMessage}`)
-			this.setState({
-				...this.state,
-				agentStatus: 'stopped',
-				currentAction: {
-					action: interruptedActionName,
-					status: 'stopped',
-					error: { message: interruptionMessage },
-				},
-			})
-			await this.setNextAlarm()
 			return
 		}
 
@@ -340,16 +315,11 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	private async runActionHandler(actionName: AgentAction, handlerFn: () => Promise<void>) {
 		this.setRunning(actionName)
-		// Track the current action's promise so that we can detect when
-		// the DO got inturrupted while it was running.
-		this.currentActionPromise = handlerFn()
 		try {
-			await this.currentActionPromise
+			await handlerFn()
 			this.setStopped(actionName)
 		} catch (e) {
 			this.setStopped(actionName, e)
-		} finally {
-			this.currentActionPromise = undefined
 		}
 	}
 
