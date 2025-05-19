@@ -195,27 +195,27 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		await match(this.state.currentAction)
 			// handle queued actions
 			.with({ action: 'initialize_container', status: 'queued' }, async () => {
-				await this.runActionHandler('initialize_container', this.handleInitializeContainer)
+				await this.runActionHandler('initialize_container', () => this.handleInitializeContainer())
 				this.setQueued('detect_issues')
 			})
 			.with({ action: 'detect_issues', status: 'queued' }, async () => {
-				await this.runActionHandler('detect_issues', this.handleDetectIssues)
+				await this.runActionHandler('detect_issues', () => this.handleDetectIssues())
 				this.setQueued('fix_issues')
 			})
 			.with({ action: 'fix_issues', status: 'queued' }, async () => {
-				await this.runActionHandler('fix_issues', this.handleFixIssues)
+				await this.runActionHandler('fix_issues', () => this.handleFixIssues())
 				this.setQueued('commit_changes')
 			})
 			.with({ action: 'commit_changes', status: 'queued' }, async () => {
-				await this.runActionHandler('commit_changes', this.handleCommitChanges)
+				await this.runActionHandler('commit_changes', () => this.handleCommitChanges())
 				this.setQueued('push_changes')
 			})
 			.with({ action: 'push_changes', status: 'queued' }, async () => {
-				await this.runActionHandler('push_changes', this.handlePushChanges)
+				await this.runActionHandler('push_changes', () => this.handlePushChanges())
 				this.setQueued('create_pr')
 			})
 			.with({ action: 'create_pr', status: 'queued' }, async () => {
-				await this.runActionHandler('create_pr', this.handleCreatePr)
+				await this.runActionHandler('create_pr', () => this.handleCreatePr())
 
 				this.logger.info('[AutofixAgent] Agent is done! Stopping.')
 				this.setState({
@@ -267,7 +267,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	private setNextAlarm(nextAlarm?: Date) {
 		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
-		void this.ctx.storage.setAlarm(nextAlarmDate)
+		void this.schedule(nextAlarmDate, 'onAlarm', undefined)
 		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
 	}
 
