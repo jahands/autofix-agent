@@ -118,8 +118,6 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			state: {
 				repo,
 				branch,
-				agentStatus: 'queued',
-				currentAction: { action: 'initialize_container', status: 'queued' },
 			},
 		})
 
@@ -132,7 +130,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		})
 
 		// All further logic is handled in onAlarm
-		this.setNextAlarm()
+		await this.setNextAlarm()
 
 		return {
 			repo: this.state.repo,
@@ -144,25 +142,27 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
-	override async onAlarm(): Promise<void> {
+	async onAlarm(): Promise<void> {
 		this.logger.info('[AutofixAgent] Alarm triggered.')
 
 		// handle Agent statuses
-		const isStopped = match(this.state.agentStatus)
-			.returnType<boolean>()
-			.with('queued', () => {
+		const isStopped = await match(this.state.agentStatus)
+			.returnType<Promise<boolean>>()
+			.with('queued', async () => {
 				this.logger.info('[AutofixAgent] Agent is queued. Transitioning to running.')
 				this.setState({
 					...this.state,
 					agentStatus: 'running',
 				})
+				await this.setNextAlarm()
 				return false
 			})
-			.with('running', () => {
-				this.setNextAlarm()
+			.with('running', async () => {
+				this.logger.info('[AutofixAgent] Agent is running. Setting next alarm.')
+				await this.setNextAlarm()
 				return false
 			})
-			.with('stopped', () => {
+			.with('stopped', async () => {
 				this.logger.info('[AutofixAgent] Agent is stopped. No new alarm will be set.')
 				return true
 			})
@@ -187,7 +187,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 					error: { message: interruptionMessage },
 				},
 			})
-			this.setNextAlarm()
+			await this.setNextAlarm()
 			return
 		}
 
@@ -265,9 +265,9 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 * Schedules the next alarm for the agent.
 	 * @param nextAlarm Optional specific date for the next alarm. Default: 1 seconds from now.
 	 */
-	private setNextAlarm(nextAlarm?: Date) {
+	private async setNextAlarm(nextAlarm?: Date) {
 		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
-		void this.schedule(nextAlarmDate, 'onAlarm', undefined)
+		await this.schedule(nextAlarmDate, 'onAlarm', undefined)
 		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
 	}
 
@@ -332,7 +332,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		this.setRunning(actionName)
 		// Track the current action's promise so that we can detect when
 		// the DO got inturrupted while it was running.
-		this.currentActionPromise = handlerFn.bind(this)()
+		this.currentActionPromise = handlerFn()
 		try {
 			await this.currentActionPromise
 			this.setStopped(actionName)
