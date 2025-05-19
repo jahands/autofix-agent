@@ -142,16 +142,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		}
 	}
 
-	/**
-	 * Schedules the next alarm for the agent.
-	 * @param nextAlarm Optional specific date for the next alarm. Default: 1 seconds from now.
-	 */
-	private setNextAlarm(nextAlarm?: Date) {
-		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
-		void this.ctx.storage.setAlarm(nextAlarmDate)
-		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
-	}
-
 	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
 	override async onAlarm(): Promise<void> {
 		this.logger.info('[AutofixAgent] Alarm triggered.')
@@ -269,6 +259,16 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 	// ========================== //
 	// ======== Helpers ========= //
 	// ========================== //
+
+	/**
+	 * Schedules the next alarm for the agent.
+	 * @param nextAlarm Optional specific date for the next alarm. Default: 1 seconds from now.
+	 */
+	private setNextAlarm(nextAlarm?: Date) {
+		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
+		void this.ctx.storage.setAlarm(nextAlarmDate)
+		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
+	}
 
 	/**
 	 * Set the provided action to queued.
