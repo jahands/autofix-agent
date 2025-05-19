@@ -55,6 +55,9 @@ const AgentActions = [
 const AgentAction = z.enum(AgentActions.map((a) => a.name))
 type AgentAction = z.infer<typeof AgentAction>
 
+/**
+ * The status of an action that the agent is taking.
+ */
 const ActionStatuses = [
 	{ name: 'queued', description: 'Action is queued and waiting to start.' },
 	{ name: 'running', description: 'Action is running and processing.' },
