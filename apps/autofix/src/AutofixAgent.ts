@@ -182,6 +182,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				return true
 			})
 			.exhaustive()
+
 		if (isStopped) {
 			return
 		}
