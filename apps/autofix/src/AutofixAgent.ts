@@ -121,9 +121,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			},
 		})
 
-		this.logger.info(
-			`[AutofixAgent] Starting for repo: ${repo}, branch: ${branch}. Agent status: queued.`
-		)
+		this.logger.info(`[AutofixAgent] Queueing agent for repo: ${repo}, branch: ${branch}.`)
 		this.setState({
 			repo,
 			branch,
@@ -132,6 +130,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			errorDetails: undefined,
 		})
 
+		// All further logic is handled in onAlarm
 		this.setNextAlarm(datePlus('1 second'))
 
 		return {
@@ -147,16 +146,12 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 
 	/**
 	 * Schedules the next alarm for the agent.
-	 * @param nextAlarm Optional specific date for the next alarm. Defaults to 5 seconds from now.
+	 * @param nextAlarm Optional specific date for the next alarm. Default:  5 seconds from now.
 	 */
 	private setNextAlarm(nextAlarm?: Date) {
 		const nextAlarmDate = nextAlarm ?? datePlus('5 seconds')
-		if (this.state && this.state.agentStatus !== 'stopped') {
-			void this.ctx.storage.setAlarm(nextAlarmDate)
-			this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
-		} else if (this.state) {
-			this.logger.info(`[AutofixAgent] Agent is stopped. No new alarm will be set.`)
-		}
+		void this.ctx.storage.setAlarm(nextAlarmDate)
+		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
 	}
 
 	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
@@ -182,9 +177,24 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			return
 		}
 
-		if (this.state.agentStatus !== 'stopped') {
-			this.setNextAlarm()
-		}
+		// handle Agent statuses
+		match(this.state.agentStatus)
+			.with('queued', () => {
+				this.logger.info('[AutofixAgent] Agent is queued. Transitioning to running.')
+				this.setState({
+					...this.state,
+					agentStatus: 'running',
+				})
+			})
+			.with('running', () => {
+				this.setNextAlarm()
+			})
+			.with('stopped', () => {
+				this.logger.info('[AutofixAgent] Agent is stopped. No new alarm will be set.')
+			})
+			.exhaustive()
+
+		// handle agent actions
 
 		const getActionHandler = (actionName: AgentAction): (() => Promise<void>) | undefined => {
 			return match(actionName)
