@@ -249,16 +249,16 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		/**
 		 * Run a queued action. Automatically updates running/stopped statuses.
 		 */
-		const runActionHandler = async (actionToRun: AgentAction, callback: () => Promise<void>) => {
-			setRunning(actionToRun)
+		const runActionHandler = async (actionName: AgentAction, handlerFn: () => Promise<void>) => {
+			setRunning(actionName)
 			// Track the current action's promise so that we can detect when
 			// the DO got inturrupted while it was running.
-			this.currentActionPromise = callback()
+			this.currentActionPromise = handlerFn()
 			try {
 				await this.currentActionPromise
-				setStopped(actionToRun)
+				setStopped(actionName)
 			} catch (e) {
-				setStopped(actionToRun, e)
+				setStopped(actionName, e)
 			} finally {
 				this.currentActionPromise = undefined
 			}
