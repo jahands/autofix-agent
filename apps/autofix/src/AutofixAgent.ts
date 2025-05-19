@@ -78,7 +78,6 @@ export type AgentState = {
 }
 
 // Define the specific list of action strings that require handlers for this agent
-// This should include all defined AgentActions now, as 'idle' and 'cycle_complete' are gone.
 const autofixAgentActionsRequiringHandlers = AgentActions.map((a) => a.name)
 
 @EnsureAgentActions(autofixAgentActionsRequiringHandlers)
