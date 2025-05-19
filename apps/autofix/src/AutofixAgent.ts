@@ -142,7 +142,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	@WithLogTags({ source: 'AutofixAgent', handler: 'onAlarm' })
-	async onAlarm(): Promise<void> {
+	override async onAlarm(): Promise<void> {
 		this.logger
 			.withFields({
 				agentState: JSON.stringify(this.state),
