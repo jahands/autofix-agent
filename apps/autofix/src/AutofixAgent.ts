@@ -85,8 +85,9 @@ type AgentState = {
 	}
 }
 
+export
 @EnsureAgentActions(AgentActions.map((a) => a.name))
-export class AutofixAgent extends Agent<Env, AgentState> {
+class AutofixAgent extends Agent<Env, AgentState> {
 	// Agents API reference:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/
 
