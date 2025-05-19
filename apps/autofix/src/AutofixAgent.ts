@@ -10,7 +10,33 @@ import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WithLogTags } from 'workers-tagged-logger/ts5'
 
-// define the main actions/stages of the agent
+/**
+ * The status of the agent.
+ */
+const AgentStatuses = [
+	{
+		name: 'queued',
+		description: 'Agent is queued and waiting to start.',
+	},
+	{
+		name: 'running',
+		description: 'Agent is running and processing actions.',
+	},
+	{
+		name: 'stopped',
+		description: 'Agent has stopped running.',
+	},
+] as const satisfies Array<{
+	name: string
+	description: string
+}>
+
+const AgentStatus = z.enum(AgentStatuses.map((a) => a.name))
+export type AgentStatus = z.infer<typeof AgentStatus>
+
+/**
+ * Actions/steps the agent may take.
+ */
 const AgentActions = [
 	{ name: 'idle', description: 'Agent is idle, awaiting or finished.' },
 	{ name: 'initialize_container', description: 'Initialize the container for the repository.' },
