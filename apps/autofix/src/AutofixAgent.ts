@@ -272,6 +272,82 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			.exhaustive()
 	}
 
+	// ========================== //
+	// ======== Helpers ========= //
+	// ========================== //
+
+	/**
+	 * Set the provided action to queued.
+	 */
+	private setQueued(actionName: AgentAction): void {
+		this.setState({
+			...this.state,
+			currentAction: { action: actionName, status: 'queued' },
+		})
+		this.logger.info(`[AutofixAgent]Action '${actionName}' queued.`)
+	}
+
+	/**
+	 * Set the provided action to running.
+	 */
+	private setRunning(actionName: AgentAction): void {
+		this.setState({
+			...this.state,
+			currentAction: { action: actionName, status: 'running' },
+		})
+		this.logger.info(`[AutofixAgent] Action '${actionName}' started.`)
+	}
+
+	/**
+	 * Set the provided action to stopped.
+	 *
+	 * @param error Optional error that occurred during the action.
+	 * Note: passing an error will cause the agent to stop.
+	 */
+	private setStopped(actionName: AgentAction, error?: Error | unknown): void {
+		if (error === undefined) {
+			this.setState({
+				...this.state,
+				currentAction: { action: actionName, status: 'stopped' },
+			})
+			this.logger.info(`[AutofixAgent] Action '${actionName}' stopped.`)
+		} else {
+			const errorMessage =
+				error instanceof Error ? error.message : 'Unknown error during action execution'
+			this.logger.error(
+				`[AutofixAgent] Action '${actionName}' FAILED. Error: ${errorMessage}. Agent stopping.`,
+				error instanceof Error ? error.stack : undefined
+			)
+			this.setState({
+				...this.state,
+				agentStatus: 'stopped', // Stop the agent if an action fails
+				currentAction: {
+					action: actionName,
+					status: 'stopped',
+					error: { message: errorMessage },
+				},
+			})
+		}
+	}
+
+	/**
+	 * Run a queued action. Automatically updates running/stopped statuses.
+	 */
+	private async runActionHandler(actionName: AgentAction, handlerFn: () => Promise<void>) {
+		this.setRunning(actionName)
+		// Track the current action's promise so that we can detect when
+		// the DO got inturrupted while it was running.
+		this.currentActionPromise = handlerFn.bind(this)()
+		try {
+			await this.currentActionPromise
+			this.setStopped(actionName)
+		} catch (e) {
+			this.setStopped(actionName, e)
+		} finally {
+			this.currentActionPromise = undefined
+		}
+	}
+
 	// =========================== //
 	// ===== Action Handlers ===== //
 	// =========================== //
@@ -317,65 +393,5 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info('[AutofixAgent] Mock: Creating PR...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] PR created.')
-	}
-
-	private setQueued(actionName: AgentAction): void {
-		this.setState({
-			...this.state,
-			currentAction: { action: actionName, status: 'queued' },
-		})
-		this.logger.info(`[AutofixAgent]Action '${actionName}' queued.`)
-	}
-
-	private setRunning(actionName: AgentAction): void {
-		this.setState({
-			...this.state,
-			currentAction: { action: actionName, status: 'running' },
-		})
-		this.logger.info(`[AutofixAgent] Action '${actionName}' started.`)
-	}
-
-	private setStopped(actionName: AgentAction, error?: Error | unknown): void {
-		if (error === undefined) {
-			this.setState({
-				...this.state,
-				currentAction: { action: actionName, status: 'stopped' },
-			})
-			this.logger.info(`[AutofixAgent] Action '${actionName}' stopped.`)
-		} else {
-			const errorMessage =
-				error instanceof Error ? error.message : 'Unknown error during action execution'
-			this.logger.error(
-				`[AutofixAgent] Action '${actionName}' FAILED. Error: ${errorMessage}. Agent stopping.`,
-				error instanceof Error ? error.stack : undefined
-			)
-			this.setState({
-				...this.state,
-				agentStatus: 'stopped', // Stop the agent if an action fails
-				currentAction: {
-					action: actionName,
-					status: 'stopped',
-					error: { message: errorMessage },
-				},
-			})
-		}
-	}
-
-	/**
-	 * Run a queued action. Automatically updates running/stopped statuses.
-	 */
-	private async runActionHandler(actionName: AgentAction, handlerFn: () => Promise<void>) {
-		this.setRunning(actionName)
-		// Track the current action's promise so that we can detect when
-		// the DO got inturrupted while it was running.
-		this.currentActionPromise = handlerFn.bind(this)()
-		try {
-			await this.currentActionPromise
-			this.setStopped(actionName)
-		} catch (e) {
-			this.setStopped(actionName, e)
-		} finally {
-			this.currentActionPromise = undefined
-		}
 	}
 }
