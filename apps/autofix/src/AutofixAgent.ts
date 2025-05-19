@@ -167,7 +167,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				return false
 			})
 			.with('stopped', async () => {
-				this.logger.info('[AutofixAgent] Agent is stopped. No new alarm will be set.')
+				this.logger.info('[AutofixAgent] Agent is stopped. Not setting next alarm.')
 				return true
 			})
 			.exhaustive()
