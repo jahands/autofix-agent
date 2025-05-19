@@ -271,8 +271,14 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 */
 	private async setNextAlarm(nextAlarm?: Date) {
 		const nextAlarmDate = nextAlarm ?? datePlus('1 seconds')
-		await this.schedule(nextAlarmDate, 'onAgentAlarm', undefined)
-		this.logger.info(`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()}`)
+		const task = await this.schedule(nextAlarmDate, 'onAgentAlarm', undefined)
+		this.logger
+			.withTags({
+				scheduledTaskId: task.id,
+			})
+			.info(
+				`[AutofixAgent] Next alarm set for ${nextAlarmDate.toISOString()} with taskId: "${task.id}"`
+			)
 	}
 
 	/**
