@@ -23,7 +23,7 @@ const AgentStatuses = [
 }>
 
 const AgentStatus = z.enum(AgentStatuses.map((a) => a.name))
-export type AgentStatus = z.infer<typeof AgentStatus>
+type AgentStatus = z.infer<typeof AgentStatus>
 
 /**
  * Actions/steps the agent may take.
@@ -50,12 +50,20 @@ const AgentActions = [
 }>
 
 const AgentAction = z.enum(AgentActions.map((a) => a.name))
-export type AgentAction = z.infer<typeof AgentAction>
+type AgentAction = z.infer<typeof AgentAction>
 
-const ActionStatus = z.enum(['queued', 'running', 'stopped'])
+const ActionStatuses = [
+	{ name: 'queued', description: 'Action is queued and waiting to start.' },
+	{ name: 'running', description: 'Action is running and processing.' },
+	{ name: 'stopped', description: 'Action has stopped running.' },
+] as const satisfies Array<{
+	name: string
+	description: string
+}>
+const ActionStatus = z.enum(ActionStatuses.map((a) => a.name))
 type ActionStatus = z.infer<typeof ActionStatus>
 
-export type AgentState = {
+type AgentState = {
 	repo: string
 	branch: string
 	agentStatus: AgentStatus
