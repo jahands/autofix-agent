@@ -7,7 +7,7 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
-import { generateObject, generateText } from 'ai'
+import { generateObject, generateText, tool } from 'ai'
 import { OpenAIModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
 import { streamText } from 'hono/streaming'
@@ -138,20 +138,6 @@ const app = new Hono<App>()
 				await stream.writeln(`Build metadata: ${JSON.stringify(metadata, undefined, 2)}`)
 				await stream.writeln(`Build has ${logs.length} log lines`)
 
-				const trigger = metadata.result.build_trigger_metadata
-				const repo = metadata.result.trigger.repo_connection
-				const gitRef = trigger.commit_hash ? trigger.commit_hash : trigger.branch
-				const tree = await new Octokit({ auth: c.env.DEMO_GITHUB_TOKEN }).git
-					.getTree({
-						owner: repo.provider_account_name,
-						repo: repo.repo_name,
-						tree_sha: gitRef,
-					})
-					.then((tree) =>
-						tree.data.tree.map((file) => file.path).filter((path) => path !== undefined)
-					)
-				await stream.writeln(`Got tree: ${JSON.stringify(tree, undefined, 2)}`)
-
 				// for now only ask the model to generate new files since we dont have a way to read/edit existing ones yet:
 				// that's enough to suggest a "wrangler.jsonc" when it is missing in super trivial cases,
 				// but it wont get us much further than that
@@ -164,9 +150,6 @@ const app = new Hono<App>()
 				Here is the build configuration:
 				${JSON.stringify(metadata, undefined, 2)}
 
-				Here is the full list of files available in the repo. No other files exist outside of this list:
-				${JSON.stringify(tree, undefined, 2)}
-
 				Here are the full build logs:
 				${logs}
 			`
@@ -177,10 +160,34 @@ const app = new Hono<App>()
 				const model = OpenAIModels.GPT4o()
 				const maxTokens = 10_000
 				const analysis = await generateText({
+					maxSteps: 5,
 					maxTokens,
 					model,
 					system: 'You are an expert at investigating Build failures in CI systems',
 					prompt,
+					tools: {
+						listRepoFiles: tool({
+							description: 'Get the full list of files in the repository',
+							parameters: z.object({ name: z.string() }),
+							execute: async () => {
+								await stream.writeln(`listing files!`)
+								const trigger = metadata.result.build_trigger_metadata
+								const repo = metadata.result.trigger.repo_connection
+								const gitRef = trigger.commit_hash ? trigger.commit_hash : trigger.branch
+								const tree = await new Octokit({ auth: c.env.DEMO_GITHUB_TOKEN }).git
+									.getTree({
+										owner: repo.provider_account_name,
+										repo: repo.repo_name,
+										tree_sha: gitRef,
+									})
+									.then((tree) =>
+										tree.data.tree.map((file) => file.path).filter((path) => path !== undefined)
+									)
+								await stream.writeln(`Got tree: ${JSON.stringify(tree, undefined, 2)}`)
+								return JSON.stringify(tree, undefined, 2)
+							},
+						}),
+					},
 				})
 
 				await stream.writeln(`Analysis: ${analysis.text}`)

@@ -22,5 +22,5 @@ export const AnthropicModels = {
 
 const openAi = createOpenAI({ apiKey: '' })
 export const OpenAIModels = {
-	GPT4o: () => aiGateway([openAi('chatgpt-4o-latest')]),
+	GPT4o: () => aiGateway([openAi('gpt-4o')]),
 }
