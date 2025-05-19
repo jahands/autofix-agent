@@ -4,7 +4,7 @@ import { match, P } from 'ts-pattern'
 import { z } from 'zod'
 
 import { logger } from './logger'
-import { EnsureAgentActions, type HandledAgentActions } from './agent.decorators'
+import { EnsureAgentActions } from './agent.decorators'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
@@ -82,8 +82,8 @@ export type AgentState = {
 	errorDetails?: { message: string; failedAction: AgentAction } // optional error context
 }
 
-// Define the list of actions that require handlers for this specific agent
-const autofixAgentHandledActions: HandledAgentActions[] = [
+// Define the specific list of action *string literals* from AgentAction that require handlers
+const autofixAgentActionsRequiringHandlers = [
 	'initialize_container',
 	'detect_issues',
 	'fix_issues',
@@ -91,12 +91,11 @@ const autofixAgentHandledActions: HandledAgentActions[] = [
 	'push_changes',
 	'create_pr',
 	'finish',
-	// 'handle_error', // Remains removed
-]
+] as const // Use 'as const' for a tuple of string literals
 
 // Removed autofixAgentSequence and setupAgentWorkflow call
 
-@EnsureAgentActions(autofixAgentHandledActions) // Simplified decorator application
+@EnsureAgentActions(autofixAgentActionsRequiringHandlers)
 export class AutofixAgent extends Agent<Env, AgentState> {
 	// define methods on the Agent:
 	// https://developers.cloudflare.com/agents/api-reference/agents-api/

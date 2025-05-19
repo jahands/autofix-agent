@@ -1,41 +1,33 @@
-import type { AgentAction } from './AutofixAgent' // Adjust path as needed
+// import type { AgentAction } from './AutofixAgent'; // REMOVED
+// No longer importing AgentState or logger for this simplified version
 
-// Define which actions are excluded from needing explicit handlers defined by the decorator
-type ExcludedActions = 'idle' | 'cycle_complete'
-
-// Define the actions that are expected to have handlers
-export type HandledAgentActions = Exclude<AgentAction, ExcludedActions>
+// Removed ExcludedActions and specific HandledAgentActions definition
+// export type HandledAgentActions = Exclude<AgentAction, ExcludedActions>;
 
 // Utility type to convert snake_case or simple strings to PascalCase
-// More robust PascalCase conversion might be needed for complex strings
+// This utility is now generic over any string.
 type PascalCase<S extends string> = S extends `${infer P1}_${infer P2}`
 	? `${Capitalize<Lowercase<P1>>}${PascalCase<Capitalize<Lowercase<P2>>>}`
 	: Capitalize<S>
 
-// Utility type to derive the expected handler method name from an action name
-// e.g., 'initialize_container' -> 'handleInitializeContainer'
-export type ActionToHandlerName<A extends HandledAgentActions> = `handle${PascalCase<A>}`
+// Utility type to derive the expected handler method name from an action name (string)
+export type ActionToHandlerName<A extends string> = `handle${PascalCase<A>}`
 
-// Removed AGENT_SEQUENCE_END, NextActionOutcome, ActionSequenceConfig, AgentWithStateForSequence
-
-// Simplified Decorator Function
+// Simplified Decorator Function - now generic over action strings
 export function EnsureAgentActions<
-	// Renamed from setupAgentWorkflow, directly returns the decorator
-	const THandledActions extends readonly HandledAgentActions[],
->(_actionsToHandle: THandledActions) {
+	const TActionStrings extends ReadonlyArray<string>, // Accepts any array of strings
+>(actionsToHandle: TActionStrings) {
 	return function <
+		// Ctor is constrained to have handlers for the specific strings passed in TActionStrings
 		Ctor extends new (...args: any[]) => {
-			[K in THandledActions[number] as ActionToHandlerName<K>]: () => Promise<void>
-		} & { [key: string]: any }, // Index signature for dynamic access, optional but can be kept for now
+			[K in TActionStrings[number] as ActionToHandlerName<K>]: () => Promise<void>
+		} & { [key: string]: any },
 	>(value: Ctor, context: ClassDecoratorContext): Ctor | void {
 		if (context.kind !== 'class') {
 			throw new Error('EnsureAgentActions must be used as a class decorator.')
 		}
 
-		// This decorator now ONLY performs compile-time type checking for handler existence and signature.
-		// It no longer injects any methods like handleActionSuccess.
-
-		return value // Return the original constructor
+		return value
 	}
 }
 
