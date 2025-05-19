@@ -85,7 +85,8 @@ type AgentState = {
 	}
 }
 
-export
+export { AutofixAgent }
+
 @EnsureAgentActions(AgentActions.map((a) => a.name))
 class AutofixAgent extends Agent<Env, AgentState> {
 	// Agents API reference:
