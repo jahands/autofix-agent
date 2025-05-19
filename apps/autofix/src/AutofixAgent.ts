@@ -14,18 +14,9 @@ import { WithLogTags } from 'workers-tagged-logger/ts5'
  * The status of the agent.
  */
 const AgentStatuses = [
-	{
-		name: 'queued',
-		description: 'Agent is queued and waiting to start.',
-	},
-	{
-		name: 'running',
-		description: 'Agent is running and processing actions.',
-	},
-	{
-		name: 'stopped',
-		description: 'Agent has stopped running.',
-	},
+	{ name: 'queued', description: 'Agent is queued and waiting to start.' },
+	{ name: 'running', description: 'Agent is running and processing actions.' },
+	{ name: 'stopped', description: 'Agent has stopped running.' },
 ] as const satisfies Array<{
 	name: string
 	description: string
