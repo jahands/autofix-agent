@@ -79,7 +79,10 @@ type AgentState = {
 	currentAction: {
 		action: AgentAction
 		status: ActionStatus
-		errorDetails?: { message: string; failedAction: AgentAction }
+		/**
+		 * If the action failed, this will contain the error details.
+		 */
+		error?: { message: string }
 	}
 }
 
@@ -195,22 +198,11 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				currentAction: {
 					action: interruptedActionName,
 					status: 'stopped',
-					errorDetails: {
-						message: interruptionMessage,
-						failedAction: interruptedActionName,
-					},
+					error: { message: interruptionMessage },
 				},
 			})
 			this.setNextAlarm()
 			return
-		}
-
-		const setRunning = (newActionName: AgentAction): void => {
-			this.setState({
-				...this.state,
-				currentAction: { action: newActionName, status: 'running' },
-			})
-			this.logger.info(`[AutofixAgent] Starting action: '${newActionName}'.`)
 		}
 
 		const setQueued = (newActionName: AgentAction): void => {
@@ -221,23 +213,60 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			this.logger.info(`[AutofixAgent] Action '${newActionName}' queued.`)
 		}
 
+		const setRunning = (newActionName: AgentAction): void => {
+			this.setState({
+				...this.state,
+				currentAction: { action: newActionName, status: 'running' },
+			})
+			this.logger.info(`[AutofixAgent] Starting action: '${newActionName}'.`)
+		}
+
+		const setStopped = (actionName: AgentAction, error?: Error | unknown): void => {
+			if (error === undefined) {
+				this.setState({
+					...this.state,
+					currentAction: { action: actionName, status: 'stopped' },
+				})
+				this.logger.info(`[AutofixAgent] Action '${actionName}' stopped.`)
+			} else {
+				const errorMessage =
+					error instanceof Error ? error.message : 'Unknown error during action execution'
+				this.logger.error(
+					`[AutofixAgent] Action '${actionName}' FAILED. Error: ${errorMessage}. Agent stopping.`,
+					error instanceof Error ? error.stack : undefined
+				)
+				this.setState({
+					...this.state,
+					currentAction: {
+						action: actionName,
+						status: 'stopped',
+						error: { message: errorMessage },
+					},
+				})
+			}
+		}
+
+		/**
+		 * Run a queued action. Automatically updates running/stopped statuses.
+		 */
 		const runActionHandler = async (actionToRun: AgentAction, callback: () => Promise<void>) => {
 			setRunning(actionToRun)
-			// track the current action's promise so that we can detect when
+			// Track the current action's promise so that we can detect when
 			// the DO got inturrupted while it was running.
 			this.currentActionPromise = callback()
 			try {
 				await this.currentActionPromise
-				this.setActionOutcome({ progress: 'success' })
+				setStopped(actionToRun)
 			} catch (e) {
-				this.setActionOutcome({ progress: 'failed', error: e })
+				setStopped(actionToRun, e)
 			} finally {
 				this.currentActionPromise = undefined
 			}
 		}
 
-		// handle agent actions
+		// agent actions
 		await match(this.state.currentAction)
+			// handle queued actions
 			.with({ action: 'initialize_container', status: 'queued' }, async () => {
 				await runActionHandler('initialize_container', this.handleInitializeContainer)
 				setQueued('detect_issues')
@@ -267,6 +296,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					agentStatus: 'stopped',
 				})
 			})
+
 			// Only one alarm runs at a time, so if we got here, it means
 			// the agent failed to complete the previous action (or failed
 			// to mark it as stopped). In the future, we'll retry a few times.
@@ -279,13 +309,13 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 					currentAction: {
 						action,
 						status: 'stopped',
-						errorDetails: {
+						error: {
 							message: `Agent is stuck in a loop.`,
-							failedAction: action,
 						},
 					},
 				})
 			})
+
 			// If we get here, it means there are no further
 			// actions to run, so we can stop the agent.
 			.with({ status: 'stopped' }, ({ action }) => {
@@ -298,45 +328,6 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 				})
 			})
 			.exhaustive()
-	}
-
-	/**
-	 * Sets the outcome (success or failure) of the current action, updating progress, attempt counts, and error details.
-	 * @param options Specifies the progress status and error object if failed.
-	 * @returns boolean - true if the action has definitively failed (all retries exhausted or unrecoverable), false otherwise.
-	 */
-	private setActionOutcome(
-		options: { progress: 'success' } | { progress: 'failed'; error: Error | unknown }
-	): void {
-		const currentActionName = this.state.currentAction.action
-		if (options.progress === 'success') {
-			this.setState({
-				...this.state,
-				currentAction: { ...this.state.currentAction, status: 'stopped' },
-			})
-			this.logger.info(
-				`[AutofixAgent] Action '${currentActionName}' Succeeded (progress set to stopped).`
-			)
-		} else {
-			const e = options.error
-			const errorMessage = e instanceof Error ? e.message : 'Unknown error during action execution'
-			this.logger.error(
-				`[AutofixAgent] Action '${currentActionName}' FAILED. Error: ${errorMessage}. Agent stopping.`,
-				e instanceof Error ? e.stack : undefined
-			)
-			this.setState({
-				...this.state,
-				agentStatus: 'stopped',
-				currentAction: {
-					...this.state.currentAction,
-					status: 'stopped',
-					errorDetails: {
-						message: `Action '${currentActionName}' failed: ${errorMessage}`,
-						failedAction: currentActionName,
-					},
-				},
-			})
-		}
 	}
 
 	// =========================== //
@@ -384,9 +375,5 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info('[AutofixAgent] Mock: Creating PR...')
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		this.logger.info('[AutofixAgent] PR created.')
-	}
-
-	async handleFinish(): Promise<void> {
-		this.logger.info('[AutofixAgent] Executing: handleFinish. Agent process cycle completed.')
 	}
 }
