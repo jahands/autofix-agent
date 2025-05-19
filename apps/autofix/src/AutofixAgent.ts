@@ -137,9 +137,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		return {
 			repo: this.state.repo,
 			branch: this.state.branch,
-			currentAction: this.state.currentAction.action,
-			progress: this.state.currentAction.status,
 			agentStatus: this.state.agentStatus,
+			currentAction: this.state.currentAction,
 			message: 'AutofixAgent queued.',
 		}
 	}
