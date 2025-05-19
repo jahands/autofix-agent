@@ -28,7 +28,7 @@
 		"mock-fs": "5.5.0",
 		"ts-pattern": "5.7.0",
 		"tsx": "4.19.4",
-		"workers-tagged-logger": "0.11.0",
+		"workers-tagged-logger": "0.11.1",
 		"zod": "4.0.0-beta.20250430T185432"
 	},
 	"devDependencies": {
