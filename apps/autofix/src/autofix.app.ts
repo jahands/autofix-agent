@@ -10,6 +10,7 @@ import { WorkersBuildsClient } from './workersBuilds'
 import { generateObject, generateText } from 'ai'
 import { WorkersAiModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
+import { streamText } from 'hono/streaming'
 
 export { AutofixAgent } from './AutofixAgent'
 export { UserContainer } from './container-server/userContainer'
@@ -121,39 +122,40 @@ const app = new Hono<App>()
 			})
 		),
 		async (c) => {
-			const buildUuid = c.req.valid('param').buildUuid
-			const workersBuilds = new WorkersBuildsClient({
-				accountTag: c.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
-				apiToken: c.env.DEMO_CLOUDFLARE_API_TOKEN,
-			})
-
-			console.log(`Grabbing metadata and logs for Build "${buildUuid}"`)
-			const [metadata, logs] = await Promise.all([
-				workersBuilds.getBuildMetadata(buildUuid),
-				workersBuilds.getBuildLogs(buildUuid),
-			])
-
-			console.log(`Build metadata: ${JSON.stringify(metadata, undefined, 2)}`)
-			console.log(`Build has ${logs.length} log lines`)
-
-			const trigger = metadata.result.build_trigger_metadata
-			const repo = metadata.result.trigger.repo_connection
-			const gitRef = trigger.commit_hash ? trigger.commit_hash : trigger.branch
-			const tree = await new Octokit({ auth: c.env.DEMO_GITHUB_TOKEN }).git
-				.getTree({
-					owner: repo.provider_account_name,
-					repo: repo.repo_name,
-					tree_sha: gitRef,
+			return streamText(c, async (stream) => {
+				const buildUuid = c.req.valid('param').buildUuid
+				const workersBuilds = new WorkersBuildsClient({
+					accountTag: c.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
+					apiToken: c.env.DEMO_CLOUDFLARE_API_TOKEN,
 				})
-				.then((tree) =>
-					tree.data.tree.map((file) => file.path).filter((path) => path !== undefined)
-				)
-			console.log(`Got tree: ${JSON.stringify(tree, undefined, 2)}`)
 
-			// for now only ask the model to generate new files since we dont have a way to read/edit existing ones yet:
-			// that's enough to suggest a "wrangler.jsonc" when it is missing in super trivial cases,
-			// but it wont get us much further than that
-			const prompt = `
+				await stream.writeln(`Grabbing metadata and logs for Build "${buildUuid}"`)
+				const [metadata, logs] = await Promise.all([
+					workersBuilds.getBuildMetadata(buildUuid),
+					workersBuilds.getBuildLogs(buildUuid),
+				])
+
+				await stream.writeln(`Build metadata: ${JSON.stringify(metadata, undefined, 2)}`)
+				await stream.writeln(`Build has ${logs.length} log lines`)
+
+				const trigger = metadata.result.build_trigger_metadata
+				const repo = metadata.result.trigger.repo_connection
+				const gitRef = trigger.commit_hash ? trigger.commit_hash : trigger.branch
+				const tree = await new Octokit({ auth: c.env.DEMO_GITHUB_TOKEN }).git
+					.getTree({
+						owner: repo.provider_account_name,
+						repo: repo.repo_name,
+						tree_sha: gitRef,
+					})
+					.then((tree) =>
+						tree.data.tree.map((file) => file.path).filter((path) => path !== undefined)
+					)
+				await stream.writeln(`Got tree: ${JSON.stringify(tree, undefined, 2)}`)
+
+				// for now only ask the model to generate new files since we dont have a way to read/edit existing ones yet:
+				// that's enough to suggest a "wrangler.jsonc" when it is missing in super trivial cases,
+				// but it wont get us much further than that
+				const prompt = `
 				Identify the root cause of the failure from the build logs.
 				Infer what the user intends to deploy based on the provided repository structure.
 			    If you can't find any code, then assume the repo is a static website that should be deployed directly.
@@ -168,29 +170,33 @@ const app = new Hono<App>()
 				Here are the full build logs:
 				${logs}
 			`
-			console.log(prompt)
 
-			const analysis = await generateText({
-				maxTokens: 100_000,
-				model: WorkersAiModels.Llama4,
-				system: 'You are an expert at investigating Build failures in CI systems',
-				prompt,
-			})
+				await stream.writeln(prompt)
+				await stream.writeln('Analyzing...')
 
-			console.log(`Analysis: ${analysis.text}`)
+				const analysis = await generateText({
+					maxTokens: 100_000,
+					model: WorkersAiModels.Llama4,
+					system: 'You are an expert at investigating Build failures in CI systems',
+					prompt,
+				})
 
-			const patch = await generateObject({
-				maxTokens: 100_000,
-				model: WorkersAiModels.Llama4,
-				prompt: `
+				await stream.writeln(`Analysis: ${analysis.text}`)
+
+				await stream.writeln('Generating patch...')
+				const patch = await generateObject({
+					maxTokens: 100_000,
+					model: WorkersAiModels.Llama4,
+					prompt: `
 					Generate the set of new files to create given the previous analysis below:
 					${analysis.text}
 				`,
-				schema: z.object({ files: z.array(z.object({ path: z.string(), contents: z.string() })) }),
+					schema: z.object({
+						files: z.array(z.object({ path: z.string(), contents: z.string() })),
+					}),
+				})
+				await stream.writeln(`Patch: ${JSON.stringify(patch.object, undefined, 2)}`)
 			})
-			console.log(`Patch: ${JSON.stringify(patch.object, undefined, 2)}`)
-
-			return c.text('ok')
 		}
 	)
 
