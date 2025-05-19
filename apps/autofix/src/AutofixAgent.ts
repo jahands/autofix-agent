@@ -1,6 +1,6 @@
 import { Agent } from 'agents'
 import { datePlus } from 'itty-time'
-import { match, P } from 'ts-pattern'
+import { match } from 'ts-pattern'
 import { z } from 'zod'
 
 import { logger } from './logger'
@@ -279,7 +279,7 @@ export class AutofixAgent extends Agent<Env, AgentState> {
 			...this.state,
 			currentAction: { action: actionName, status: 'queued' },
 		})
-		this.logger.info(`[AutofixAgent]Action '${actionName}' queued.`)
+		this.logger.info(`[AutofixAgent] Action '${actionName}' queued.`)
 	}
 
 	/**
