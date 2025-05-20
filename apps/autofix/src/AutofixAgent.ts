@@ -398,7 +398,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
 		const logs = await userContainer.container_exec({
-			args: `cd autofix-container && git add . && git commit -m ${commitMessage}`,
+			args: `cd repo && git add . && git commit -m ${commitMessage}`,
 		})
 		for (const log of logs) {
 			console.log(log)

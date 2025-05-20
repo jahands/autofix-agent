@@ -23,6 +23,8 @@ RUN apk update && \
     # Create symlink for python
     ln -sf /usr/bin/python3 /usr/bin/python
 
+RUN curl -sSL https://get.docker.com/ | sh
+
 # Install pnpm in a separate layer for better caching
 RUN npm install -g pnpm && \
     rm -rf /root/.npm

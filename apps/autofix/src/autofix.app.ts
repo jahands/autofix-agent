@@ -79,7 +79,7 @@ const app = new Hono<App>()
 			const { agentId } = c.req.valid('param')
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
-			const res = await agent.commit("Testing testing!")
+			const res = await agent.commit("Testing!")
 			return c.json(res)
 		}
 	)

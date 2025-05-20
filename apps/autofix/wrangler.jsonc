@@ -30,7 +30,7 @@
 		{
 			"name": "autofix-container-staging",
 			// UPDATE WHEN DEPLOYING A NEW IMAGE
-			"image": "registry.cloudchamber.cfdata.org/autofix-container:020835f",
+			"image": "registry.cloudchamber.cfdata.org/autofix-container:fd68ad7",
 			"class_name": "UserContainer",
 			"instances": 3,
 			"rollout_step_percentage": 100
