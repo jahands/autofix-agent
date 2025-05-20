@@ -9,7 +9,6 @@ export type ExecParams = z.infer<typeof ExecParams>
 export const ExecParams = z.object({
 	args: z.string(),
 	timeout: z.number().optional().describe('Timeout in milliseconds'),
-	streamStderr: z.boolean().default(true),
 })
 
 export type FileWrite = z.infer<typeof FileWrite>

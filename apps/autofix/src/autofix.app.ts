@@ -71,6 +71,19 @@ const app = new Hono<App>()
 		}
 	)
 
+	// Commit files
+	.post(
+		'/api/agents/:agentId/commit',
+		sValidator('param', z.object({ agentId: z.string() })),
+		async (c) => {
+			const { agentId } = c.req.valid('param')
+			const id = c.env.AutofixAgent.idFromName(agentId)
+			const agent = c.env.AutofixAgent.get(id)
+			const res = await agent.commit("Testing testing!")
+			return c.json(res)
+		}
+	)
+
 	// Get the state of the agent
 	.get(
 		'/api/agents/:agentId',

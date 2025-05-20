@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { z } from 'zod'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
 import { proxyFetch, startAndWaitForPort } from './containerHelpers'
@@ -54,7 +55,7 @@ export class UserContainer extends DurableObject<Env> {
 		return await res.text()
 	}
 
-	async container_exec(params: ExecParams): Promise<string> {
+	async container_exec(params: ExecParams): Promise<string[]> {
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
@@ -70,8 +71,9 @@ export class UserContainer extends DurableObject<Env> {
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
-		const txt = await res.text()
-		return txt
+		const execRes = z.object({ logs: z.array(z.string()) })
+		const { logs } = execRes.parse(await res.json())
+		return logs
 	}
 
 	async container_ls(): Promise<FileList> {

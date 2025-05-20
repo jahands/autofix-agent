@@ -13,7 +13,7 @@
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
-		"start:container": "tsx src/container/sandbox.container.app.ts",
+		"start:container": "tsx src/container/container.app.ts",
 		"test": "run-vitest"
 	},
 	"dependencies": {
@@ -44,6 +44,6 @@
 		"@types/node": "22.15.19",
 		"vite": "6.3.4",
 		"vitest": "3.1.3",
-		"wrangler": "4.15.2"
+		"wrangler": "4.16.0"
 	}
 }
