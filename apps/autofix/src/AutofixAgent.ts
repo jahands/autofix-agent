@@ -8,6 +8,7 @@ import { logger } from './logger'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
+import { WorkersBuildsClient } from './workersBuilds'
 
 /**
  * The status of the agent. This allows us to easily determine the
@@ -69,8 +70,11 @@ const ActionStatus = z.enum(ActionStatuses.map((a) => a.name))
 type ActionStatus = z.infer<typeof ActionStatus>
 
 type AgentState = {
-	repo: string
-	branch: string
+	buildUuid: string
+	gitConfig: {
+		repo: string
+		ref: string
+	}
 	agentStatus: AgentStatus
 	/**
 	 * We currently only support one action at a time, which is tracked here.
@@ -107,18 +111,29 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	 * Start the agent
 	 */
 	@WithLogTags({ source: 'AutofixAgent', handler: 'start' })
-	public async start({ repo, branch }: { repo: string; branch: string }) {
+	public async start({ buildUuid }: { buildUuid: string }) {
 		this.logger = logger.withTags({
 			state: {
-				repo,
-				branch,
+				buildUuid,
 			},
 		})
 
-		this.logger.info(`[AutofixAgent] Queueing agent for repo: ${repo}, branch: ${branch}.`)
+		const workersBuilds = new WorkersBuildsClient({
+			accountTag: this.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
+			apiToken: this.env.DEMO_CLOUDFLARE_API_TOKEN,
+		})
+		const buildMetadata = await workersBuilds.getBuildMetadata(buildUuid)
+		const account = buildMetadata.result.build_trigger_metadata.provider_account_name
+		const repo = buildMetadata.result.build_trigger_metadata.repo_name
+		const commitSha = buildMetadata.result.build_trigger_metadata.commit_hash
+
+		this.logger.info(`[AutofixAgent] Queueing agent for build ${buildUuid}`)
 		this.setState({
-			repo,
-			branch,
+			buildUuid,
+			gitConfig: {
+				repo: `https://github.com/${account}/${repo}.git`,
+				ref: commitSha,
+			},
 			agentStatus: 'queued',
 			currentAction: { action: 'initialize_container', status: 'queued' },
 		})
@@ -127,8 +142,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		await this.setNextAlarm()
 
 		return {
-			repo: this.state.repo,
-			branch: this.state.branch,
+			buildUuid: this.state.buildUuid,
+			gitConfig: this.state.gitConfig,
 			agentStatus: this.state.agentStatus,
 			currentAction: this.state.currentAction,
 			message: 'AutofixAgent queued.',
@@ -329,14 +344,14 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	async handleInitializeContainer(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleInitializeContainer')
-		const { repo } = this.state
-		this.logger.info(`[AutofixAgent] Mock: Initializing container for repo: ${repo}`)
+		const { gitConfig } = this.state
+		this.logger.info(`[AutofixAgent] Mock: Initializing container for repo: ${gitConfig.repo}`)
 
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
 
 		// Start container, and destroy any active containers
-		await userContainer.container_initialize(repo)
+		await userContainer.container_initialize(gitConfig.repo)
 
 		this.logger.info('[AutofixAgent] Container initialized.')
 	}
