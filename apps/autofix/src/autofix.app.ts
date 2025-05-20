@@ -8,7 +8,7 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
 import { generateObject, generateText, tool } from 'ai'
-import { GoogleModels, OpenAIModels } from './ai-models'
+import { AnthropicModels, GoogleModels, OpenAIModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
 import { streamText } from 'hono/streaming'
 
@@ -213,9 +213,21 @@ const app = new Hono<App>()
 		const model = GoogleModels.GeminiFlash()
 		const res = await generateText({
 			model,
-			prompt: 'Hello, world!',
+			maxSteps: 10,
+			prompt: 'Check the weather in Amarillo and then tell me a joke about the current weather.',
+			tools: {
+				getCurrentWeather: tool({
+					description: 'Get the current weather for a city',
+					parameters: z.object({ city: z.string() }),
+					execute: async ({ city }) => {
+						console.log('getCurrentWeather', city)
+						// In a real scenario, you would call an weather API here
+						return { weather: `The weather in ${city} is sunny.` }
+					},
+				}),
+			},
 		})
-		return c.text(res.text)
+		return c.text(JSON.stringify({ res: res.text }, null, 2))
 	})
 
 export default app
