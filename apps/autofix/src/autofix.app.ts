@@ -79,7 +79,22 @@ const app = new Hono<App>()
 			const { agentId } = c.req.valid('param')
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
-			const res = await agent.commit("Testing!")
+			const res = await agent.commit('Testing!')
+			return c.json(res)
+		}
+	)
+
+	// Exec command
+	.post(
+		'/api/agents/:agentId/exec',
+		sValidator('param', z.object({ agentId: z.string() })),
+		sValidator('json', z.object({ command: z.string() })),
+		async (c) => {
+			const { agentId } = c.req.valid('param')
+			const { command } = c.req.valid('json')
+			const id = c.env.AutofixAgent.idFromName(agentId)
+			const agent = c.env.AutofixAgent.get(id)
+			const res = await agent.exec(command)
 			return c.json(res)
 		}
 	)

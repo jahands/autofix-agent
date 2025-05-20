@@ -1,27 +1,42 @@
-# Use Alpine as base for minimal size
-FROM alpine:3.21 as base
+FROM node:24 as base
 
 # Install necessary packages while minimizing layers
 # We combine commands with && and clean cache in the same layer
 # to reduce the image size
-RUN apk update && \
-    apk add --no-cache \
-    # Core utilities
-    git \
-    curl \
-    wget \
-    # Build essentials
-    build-base \
-    # Python and pip
-    python3 \
-    py3-pip \
-    # Node and npm
-    nodejs \
-    npm && \
-    # Clean up the cache to reduce image size
-    rm -rf /var/cache/apk/* && \
-    # Create symlink for python
-    ln -sf /usr/bin/python3 /usr/bin/python
+RUN apt-get -y update
+
+RUN apt-get install -y \
+  curl \
+  git \
+  git-lfs \
+  unzip \
+  autoconf \
+  build-essential \
+  bzip2 \
+  gnupg \
+  jq \
+  libffi-dev \
+  libbz2-dev \
+  libc++1 \
+  libdb-dev \
+  libgdbm-dev \
+  libgdbm6 \
+  libgbm1 \
+  libgmp-dev \
+  liblzma-dev \
+  libncurses5-dev \
+  libreadline-dev \
+  libssl-dev \
+  libvips-dev \
+  libyaml-dev \
+  tzdata \
+  wget \
+  zlib1g-dev \
+  zstd \
+  software-properties-common
+
+RUN curl -fsSL https://get.docker.com -o get-docker.sh
+RUN sh get-docker.sh
 
 # Install pnpm in a separate layer for better caching
 RUN npm install -g pnpm && \

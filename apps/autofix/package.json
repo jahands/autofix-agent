@@ -6,7 +6,8 @@
 	"type": "module",
 	"scripts": {
 		"build": "run-vite-build",
-		"build:container": "docker build --platform linux/amd64 --tag autofix-container:$(git rev-parse --short HEAD) -f ./src/container-server/Dockerfile ../../ && wrangler containers push autofix-container:$(git rev-parse --short HEAD)",
+		"build:container": "docker build --platform linux/amd64 --tag autofix-container:$(git rev-parse --short HEAD) -f ./src/container-server/Dockerfile-docker ../../ && wrangler containers push autofix-container:$(git rev-parse --short HEAD)",
+		"build:container:simple": "docker build --platform linux/amd64 --tag simple-container:master -f ./src/container-server/Dockerfile-docker-simple ../../ && wrangler containers push simple-container:master",
 		"check:lint": "run-eslint-default",
 		"check:types": "run-tsc",
 		"deploy": "run-wrangler-deploy",

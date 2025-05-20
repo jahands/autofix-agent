@@ -1,4 +1,3 @@
-import { exec } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import { serve } from '@hono/node-server'
