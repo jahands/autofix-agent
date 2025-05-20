@@ -1,12 +1,19 @@
 import { DurableObject } from 'cloudflare:workers'
+import { z } from 'zod'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
 import { proxyFetch, startAndWaitForPort } from './containerHelpers'
 import { fileToBase64 } from './utils'
 
 import type { Env } from '../autofix.context'
-import type { ExecParams, FileList, FileWrite } from '../shared/schema'
+import type { FileList, FileWrite } from '../shared/schema'
 
+type ExecResult = z.infer<typeof ExecResult>
+const ExecResult = z.object({
+	status: z.number(),
+	stdout: z.string(),
+	stderr: z.string(),
+})
 export class UserContainer extends DurableObject<Env> {
 	constructor(
 		public ctx: DurableObjectState,
@@ -20,7 +27,7 @@ export class UserContainer extends DurableObject<Env> {
 		await this.ctx.container?.destroy()
 	}
 
-	async container_initialize(gitURL: string): Promise<string> {
+	async container_initialize(): Promise<string> {
 		// kill container
 		await this.destroyContainer()
 
@@ -28,7 +35,6 @@ export class UserContainer extends DurableObject<Env> {
 		let startedContainer = false
 		await this.ctx.blockConcurrencyWhile(async () => {
 			startedContainer = await startAndWaitForPort({
-				gitURL,
 				environment: this.env.ENVIRONMENT,
 				container: this.ctx.container,
 				portToAwait: OPEN_CONTAINER_PORT,
@@ -54,24 +60,25 @@ export class UserContainer extends DurableObject<Env> {
 		return await res.text()
 	}
 
-	async container_exec(params: ExecParams): Promise<string> {
+	async container_exec(command: string): Promise<ExecResult> {
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/exec`, {
+			new Request(`http://host:${OPEN_CONTAINER_PORT}/spawnSync`, {
 				method: 'POST',
-				body: JSON.stringify(params),
-				headers: {
-					'content-type': 'application/json',
-				},
+				body: command,
 			}),
 			OPEN_CONTAINER_PORT
 		)
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
-		const txt = await res.text()
-		return txt
+		const body = await res.json()
+		const parsed = ExecResult.parse(body)
+		if (parsed.status !== 0) {
+			throw new Error(`Exec failed with status ${parsed.status}: ${JSON.stringify(body)}`)
+		}
+		return parsed
 	}
 
 	async container_ls(): Promise<FileList> {

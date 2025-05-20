@@ -351,7 +351,11 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
 
 		// Start container, and destroy any active containers
-		await userContainer.container_initialize(gitConfig.repo)
+		await userContainer.container_initialize()
+		const output = await userContainer.container_exec(
+			`git clone ${gitConfig.repo} . && git checkout ${gitConfig.ref}`
+		)
+		this.logger.info(`Cloned files: ${JSON.stringify(output)}`)
 
 		this.logger.info('[AutofixAgent] Container initialized.')
 	}

@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process'
+import { exec, spawnSync } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import { serve } from '@hono/node-server'
@@ -19,13 +19,6 @@ import {
 import type { FileList } from '../shared/schema.js'
 
 process.chdir('workdir')
-
-// eslint-disable-next-line turbo/no-undeclared-env-vars
-const GIT_CLONE_URL = process.env.GIT_CLONE_URL
-
-if (GIT_CLONE_URL) {
-	exec(`git clone ${GIT_CLONE_URL}`)
-}
 
 const app = new Hono()
 
@@ -208,6 +201,19 @@ app.post('/exec', zValidator('json', ExecParams), (c) => {
 				reject(err)
 			})
 		})
+	})
+})
+
+app.post('/spawnSync', async (c) => {
+	const command = await c.req.text()
+	const result = spawnSync(command, { shell: true })
+	if (result.error) {
+		return c.json({ error: result.error }, 500)
+	}
+	return c.json({
+		status: result.status,
+		stdout: result.stdout.toString().trim(),
+		stderr: result.stderr.toString().trim(),
 	})
 })
 
