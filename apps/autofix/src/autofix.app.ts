@@ -8,7 +8,7 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
 import { generateObject, generateText, tool } from 'ai'
-import { OpenAIModels } from './ai-models'
+import { GoogleModels, OpenAIModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
 import { streamText } from 'hono/streaming'
 
@@ -208,5 +208,14 @@ const app = new Hono<App>()
 			})
 		}
 	)
+
+	.get('/api/test', async (c) => {
+		const model = GoogleModels.GeminiFlash()
+		const res = await generateText({
+			model,
+			prompt: 'Hello, world!',
+		})
+		return c.text(res.text)
+	})
 
 export default app
