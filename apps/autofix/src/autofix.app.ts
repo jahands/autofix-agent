@@ -7,7 +7,7 @@ import { useNotFound, useOnError } from '@repo/hono-helpers'
 
 import type { App } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
-import { generateObject, generateText, tool, CoreMessage, ToolCallPart, ToolResultPart } from 'ai'
+import { generateObject, generateText, tool } from 'ai'
 import { AnthropicModels, GoogleModels, OpenAIModels } from './ai-models'
 import { Octokit } from '@octokit/rest'
 import { streamText } from 'hono/streaming'
@@ -211,93 +211,23 @@ const app = new Hono<App>()
 
 	.get('/api/test', async (c) => {
 		const model = GoogleModels.GeminiFlash()
-		const tools = {
-			getCurrentWeather: tool({
-				description: 'Get the current weather for a city',
-				parameters: z.object({ city: z.string() }),
-				execute: async (params: { city: string }) => {
-					console.log('getCurrentWeather tool executed for:', params.city)
-					// In a real scenario, you would call a weather API here
-					return { weather: `The weather in ${params.city} is sunny.` }
-				},
-			}),
-		}
-
-		const initialPrompt =
-			'Check the weather in Amarillo and then tell me a joke about the current weather.'
-		const messages: CoreMessage[] = [{ role: 'user', content: initialPrompt }]
-
-		const maxTurns = 5 // To prevent infinite loops
-
-		for (let i = 0; i < maxTurns; i++) {
-			const result = await generateText({
-				model,
-				messages,
-				tools,
-			})
-
-			let assistantMessageContent: string | ToolCallPart[]
-			if (result.toolCalls && result.toolCalls.length > 0) {
-				assistantMessageContent = result.toolCalls.map((tc) => ({
-					type: 'tool-call',
-					toolCallId: tc.toolCallId,
-					toolName: tc.toolName,
-					args: tc.args,
-				}))
-			} else {
-				assistantMessageContent = result.text
-			}
-			messages.push({ role: 'assistant', content: assistantMessageContent })
-
-			if (result.finishReason === 'tool-calls' && result.toolCalls && result.toolCalls.length > 0) {
-				const toolResultsContent: ToolResultPart[] = []
-				for (const toolCall of result.toolCalls) {
-					console.log(
-						`Executing tool: ${toolCall.toolName} with args:`,
-						JSON.stringify(toolCall.args)
-					)
-					const toolDefinition = tools[toolCall.toolName]
-					let executionResult
-					let isError = false
-					try {
-						// The 'as any' is a temporary workaround if types are still mismatched.
-						// Ideally, the types from the 'ai' library should align perfectly.
-						executionResult = await (toolDefinition.execute as any)(toolCall.args)
-					} catch (error) {
-						console.error(`Error executing tool ${toolCall.toolName}:`, error)
-						executionResult = {
-							error: error instanceof Error ? error.message : String(error),
-						}
-						isError = true
-					}
-
-					toolResultsContent.push({
-						type: 'tool-result',
-						toolCallId: toolCall.toolCallId,
-						toolName: toolCall.toolName,
-						result: executionResult,
-						isError,
-					})
-				}
-				messages.push({ role: 'tool', content: toolResultsContent })
-			} else if (result.finishReason === 'stop') {
-				return c.text(JSON.stringify({ res: result.text, history: messages }, null, 2))
-			} else {
-				console.error('Unexpected finish reason or state:', result)
-				return c.text(
-					JSON.stringify(
-						{ error: 'Unexpected finish reason', details: result, history: messages },
-						null,
-						2
-					),
-					500
-				)
-			}
-		}
-		return c.text(
-			JSON.stringify({ error: `Max turns (${maxTurns}) reached`, history: messages }, null, 2),
-			500
-		)
+		const res = await generateText({
+			model,
+			maxSteps: 10,
+			prompt: 'Check the weather in Amarillo and then tell me a joke about the current weather.',
+			tools: {
+				getCurrentWeather: tool({
+					description: 'Get the current weather for a city',
+					parameters: z.object({ city: z.string() }),
+					execute: async ({ city }) => {
+						console.log('getCurrentWeather', city)
+						// In a real scenario, you would call an weather API here
+						return { weather: `The weather in ${city} is sunny.` }
+					},
+				}),
+			},
+		})
+		return c.text(JSON.stringify({ res: res.text }, null, 2))
 	})
 
 export default app
