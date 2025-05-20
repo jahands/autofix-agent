@@ -239,7 +239,7 @@ const app = new Hono<App>()
 			let assistantMessageContent: string | ToolCallPart[]
 			if (result.toolCalls && result.toolCalls.length > 0) {
 				assistantMessageContent = result.toolCalls.map((tc) => ({
-					type: 'tool-call' as const,
+					type: 'tool-call',
 					toolCallId: tc.toolCallId,
 					toolName: tc.toolName,
 					args: tc.args,
@@ -272,7 +272,7 @@ const app = new Hono<App>()
 					}
 
 					toolResultsContent.push({
-						type: 'tool-result' as const,
+						type: 'tool-result',
 						toolCallId: toolCall.toolCallId,
 						toolName: toolCall.toolName,
 						result: executionResult,
