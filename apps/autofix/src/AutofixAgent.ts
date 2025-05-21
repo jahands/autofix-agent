@@ -10,10 +10,9 @@ import { logger } from './logger'
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
-import { tool } from 'ai'
+import { experimental_createMCPClient, tool } from 'ai'
 import { generateText } from 'ai'
 import { GoogleModels } from './ai-models'
-import { workersPrompt } from './autofix.prompts'
 import { fmt } from './format'
 import { GitHubClient } from './github'
 
@@ -403,13 +402,20 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info('[AutofixAgent] Executing: handleDetectIssues')
 		this.logger.info('[AutofixAgent] Detecting issues...')
 
+		const docsTools = await experimental_createMCPClient({
+			transport: {
+				type: 'sse',
+				url: 'https://docs.mcp.cloudflare.com/sse',
+			},
+		}).then((client) => client.tools())
+
 		const tools = {
+			...docsTools,
 			listContainerFiles: tool({
 				description: 'List files in container',
 				parameters: z3.object({}),
 				execute: async () => {
 					const files = await this.listContainerFiles()
-					console.log('files', files)
 					return { files }
 				},
 			}),
@@ -441,15 +447,26 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		])
 
 		const fixItPrompt = fmt.trim(`
-			Identify the root cause of the failure from the build logs and configuration.
-			Infer what the user intends to deploy based on the provided repository structure.
-			If you can't find any code, then assume the repo is a static website that should be deployed directly.
-			Next, fix the issue so that the project can be deployed successfully.
-			Note: The target deployment platform is Cloudflare Workers.
+			Goal:
+				- Fix the build failure given the logs and configuration provided below
 
-			Explain your reasoning for each step you take.
+			Guidelines:
+				- You have tools available to you, call them as many times as you need
+				- Infer what type of project the user intends to deploy based on the provided repository structure and contents
+				- If you can't find any code, then assume the repo is a static website that should be deployed directly
+				- You MUST update the files to fix the issue
 
-			You have tools to explore the repo (which is in a container) and create files.
+			 Note:
+				- The target deployment platform is Cloudflare Workers
+				- Use the search_cloudflare_documentation tool to find docs for the given project type when proposing changes. Include a link when possible.
+				- Prefer json over toml for configuration files
+
+			Final output should contain these 3 sections. Formatted nicely for a Pull Request:
+				- describe the project and why it failed to deploy
+				- describe the relevant docs for deploying this type of project
+				- summarize the fix
+
+			Assume the worker shares the same name as the git repo.
 
 			Here is the build configuration:
 			${JSON.stringify(metadata, null, 2)}
@@ -460,11 +477,15 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 		const res = await generateText({
 			model: GoogleModels.GeminiPro(),
+			maxTokens: 50_000,
 			maxSteps: 10,
-			messages: [
-				{ role: 'system', content: workersPrompt },
-				{ role: 'user', content: fixItPrompt },
-			],
+			system: 'You are an expert at debugging CI failures',
+			prompt: fixItPrompt,
+			onStepFinish: async ({ toolCalls }) => {
+				this.logger.log(
+					`[AutofixAgent] step finished. tools: ${JSON.stringify(toolCalls.map((call) => call.toolName))}`
+				)
+			},
 			tools,
 		})
 
