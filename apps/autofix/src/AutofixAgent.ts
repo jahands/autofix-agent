@@ -375,6 +375,14 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			command: `git checkout ${gitConfig.ref}`,
 			cwd: this.buildWorkDir(),
 		})
+		await userContainer.container_exec({
+			command: `git config --global user.name 'cloudflare[bot]'`,
+			cwd: this.buildWorkDir(),
+		})
+		await userContainer.container_exec({
+			command: "git config --global user.email '<>'",
+			cwd: this.buildWorkDir(),
+		})
 		this.logger.info('[AutofixAgent] Container initialized.')
 	}
 
