@@ -1,0 +1,11 @@
+node_modules
+.turbo
+.git
+.gitignore
+.dockerignore
+.dev.vars
+.den
+dist
+.wrangler
+.eslintcache
+.DS_Store
