@@ -1,3 +1,4 @@
+import path from 'path'
 import { DurableObject } from 'cloudflare:workers'
 import { z } from 'zod'
 
@@ -101,11 +102,13 @@ export class UserContainer extends DurableObject<Env> {
 		return json
 	}
 
-	async container_file_delete(filePath: string): Promise<boolean> {
+	async container_file_delete(params: { filePath: string; cwd: string }): Promise<boolean> {
+		const { cwd, filePath } = params
+		const fullPath = path.join(cwd, filePath)
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${filePath}`, {
+			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`, {
 				method: 'DELETE',
 			}),
 			OPEN_CONTAINER_PORT
@@ -113,16 +116,19 @@ export class UserContainer extends DurableObject<Env> {
 		return res.ok
 	}
 
-	async container_file_read(
+	async container_file_read(params: {
 		filePath: string
-	): Promise<
+		cwd: string
+	}): Promise<
 		| { type: 'text'; textOutput: string; mimeType: string | undefined }
 		| { type: 'base64'; base64Output: string; mimeType: string | undefined }
 	> {
+		const { cwd, filePath } = params
+		const fullPath = path.join(cwd, filePath)
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${filePath}`),
+			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`),
 			OPEN_CONTAINER_PORT
 		)
 		if (!res || !res.ok) {
@@ -147,13 +153,22 @@ export class UserContainer extends DurableObject<Env> {
 		}
 	}
 
-	async container_file_write(file: FileWrite): Promise<string> {
+	async container_file_write(params: {
+		filePath: string
+		cwd: string
+		text: string
+	}): Promise<string> {
+		const { cwd, filePath, text } = params
+		const body: FileWrite = {
+			path: path.join(cwd, filePath),
+			text,
+		}
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
 			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents`, {
 				method: 'POST',
-				body: JSON.stringify(file),
+				body: JSON.stringify(body),
 				headers: {
 					'content-type': 'application/json',
 				},
@@ -163,6 +178,6 @@ export class UserContainer extends DurableObject<Env> {
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
-		return `Wrote file: ${file.path}`
+		return `Wrote file: ${body.path}`
 	}
 }
