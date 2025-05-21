@@ -1,25 +1,28 @@
 # Use Alpine as base for minimal size
-FROM alpine:3.21 as base
+FROM ubuntu:24.04 as base
+ARG NODE_EXTRA_CA_CERTS=""
 
 # Install necessary packages while minimizing layers
 # We combine commands with && and clean cache in the same layer
 # to reduce the image size
-RUN apk update && \
-    apk add --no-cache \
+
+# Install warp certs as root if NODE_EXTRA_CA_CERTS is provided
+COPY apps/autofix/src/container/install-scripts/install-cloudflare-warp-certs.sh /installation/
+RUN /installation/install-cloudflare-warp-certs.sh
+
+RUN apt-get -y update && \
+    apt-get install -y \
     # Core utilities
     git \
     curl \
     wget \
     # Build essentials
-    build-base \
+    build-essential \
     # Python and pip
     python3 \
-    py3-pip \
     # Node and npm
     nodejs \
     npm && \
-    # Clean up the cache to reduce image size
-    rm -rf /var/cache/apk/* && \
     # Create symlink for python
     ln -sf /usr/bin/python3 /usr/bin/python
 
