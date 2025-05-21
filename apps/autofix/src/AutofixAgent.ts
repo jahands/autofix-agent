@@ -3,12 +3,18 @@ import { datePlus } from 'itty-time'
 import { match } from 'ts-pattern'
 import { WithLogTags } from 'workers-tagged-logger/ts5'
 import { z } from 'zod/v4'
+import { z as z3 } from 'zod/v3'
 
 import { logger } from './logger'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
+import { tool } from 'ai'
+import { generateText } from 'ai'
+import { GoogleModels } from './ai-models'
+import { workersPrompt } from './autofix.prompts'
+import { fmt } from './format'
 
 /**
  * The status of the agent. This allows us to easily determine the
@@ -345,7 +351,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	async handleInitializeContainer(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleInitializeContainer')
 		const { gitConfig } = this.state
-		this.logger.info(`[AutofixAgent] Mock: Initializing container for repo: ${gitConfig.repo}`)
+		this.logger.info(`[AutofixAgent] Initializing container for repo: ${gitConfig.repo}`)
 
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
@@ -374,8 +380,76 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	async handleDetectIssues(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleDetectIssues')
-		this.logger.info('[AutofixAgent] Mock: Detecting issues...')
-		await new Promise((resolve) => setTimeout(resolve, 100))
+		this.logger.info('[AutofixAgent] Detecting issues...')
+
+		const tools = {
+			listContainerFiles: tool({
+				description: 'List files in container',
+				parameters: z3.object({}),
+				execute: async () => {
+					const files = await this.listContainerFiles()
+					console.log('files', files)
+					return { files }
+				},
+			}),
+			createFile: tool({
+				description: 'Create a file in the container with the given path and text',
+				parameters: z3.object({ filePath: z3.string(), text: z3.string() }),
+				execute: async ({ filePath, text }) => {
+					await this.createFile(filePath, text)
+				},
+			}),
+			getFileContents: tool({
+				description:
+					'Get the contents of a file in the container. Can read any file given the path.',
+				parameters: z3.object({ filePath: z3.string() }),
+				execute: async ({ filePath }) => {
+					const contents = await this.getFileContents(filePath)
+					return { contents }
+				},
+			}),
+		}
+
+		const workersBuilds = new WorkersBuildsClient({
+			accountTag: this.env.DEMO_CLOUDFLARE_ACCOUNT_TAG,
+			apiToken: this.env.DEMO_CLOUDFLARE_API_TOKEN,
+		})
+		const [metadata, logs] = await Promise.all([
+			workersBuilds.getBuildMetadata(this.state.buildUuid),
+			workersBuilds.getBuildLogs(this.state.buildUuid),
+		])
+
+		const fixItPrompt = fmt.trim(`
+			Identify the root cause of the failure from the build logs and configuration.
+			Infer what the user intends to deploy based on the provided repository structure.
+			If you can't find any code, then assume the repo is a static website that should be deployed directly.
+			Next, fix the issue so that the project can be deployed successfully.
+			Note: The target deployment platform is Cloudflare Workers.
+
+			Explain your reasoning for each step you take.
+
+			You have tools to explore the repo (which is in a container) and create files.
+
+			Here is the build configuration:
+			${JSON.stringify(metadata, null, 2)}
+
+			Here are the full build logs:
+			${logs}
+		`)
+
+		const res = await generateText({
+			model: GoogleModels.GeminiPro(),
+			maxSteps: 10,
+			messages: [
+				{ role: 'system', content: workersPrompt },
+				{ role: 'user', content: fixItPrompt },
+			],
+			tools,
+		})
+
+		logger.info(`[AutofixAgent] generateText response`)
+		console.log(res.text) // easier to read this way
+
 		this.logger.info('[AutofixAgent] Issue detection complete.')
 	}
 
@@ -423,6 +497,26 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
 		const { resources } = await userContainer.container_ls(this.buildWorkDir())
 		return { resources }
+	}
+
+	async createFile(filePath: string, content: string) {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		await userContainer.container_file_write({
+			cwd: this.buildWorkDir(),
+			filePath,
+			text: content,
+		})
+	}
+
+	async getFileContents(filePath: string) {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		const contents = await userContainer.container_file_read({
+			cwd: this.buildWorkDir(),
+			filePath,
+		})
+		return contents
 	}
 
 	private buildWorkDir() {

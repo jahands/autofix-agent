@@ -160,6 +160,7 @@ app.post(
 	zValidator('json', z.object({ command: z.string(), cwd: z.string() })),
 	async (c) => {
 		const { command, cwd } = c.req.valid('json')
+		console.log('spawnSync', command, cwd)
 		const result = spawnSync(command, { shell: true, cwd })
 		if (result.error) {
 			return c.json({ error: result.error }, 500)

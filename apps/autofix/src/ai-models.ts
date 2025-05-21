@@ -1,4 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAiGateway } from 'ai-gateway-provider'
 import { env } from 'cloudflare:workers'
@@ -23,4 +24,10 @@ export const AnthropicModels = {
 const openAi = createOpenAI({ apiKey: '' })
 export const OpenAIModels = {
 	GPT4o: () => aiGateway([openAi('gpt-4o')]),
+}
+
+const google = createGoogleGenerativeAI({ apiKey: '' })
+export const GoogleModels = {
+	GeminiPro: () => aiGateway([google('gemini-2.5-pro-preview-03-25')]),
+	GeminiFlash: () => aiGateway([google('gemini-2.0-flash')]),
 }
