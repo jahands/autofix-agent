@@ -1,31 +1,31 @@
 # Use Alpine as base for minimal size
-FROM alpine:3.21 as base
+FROM alpine:3.21 AS base
 
 # Install necessary packages while minimizing layers
 # We combine commands with && and clean cache in the same layer
 # to reduce the image size
 RUN apk update && \
-    apk add --no-cache \
-    # Core utilities
-    git \
-    curl \
-    wget \
-    # Build essentials
-    build-base \
-    # Python and pip
-    python3 \
-    py3-pip \
-    # Node and npm
-    nodejs \
-    npm && \
-    # Clean up the cache to reduce image size
-    rm -rf /var/cache/apk/* && \
-    # Create symlink for python
-    ln -sf /usr/bin/python3 /usr/bin/python
+	apk add --no-cache \
+	# Core utilities
+	git \
+	curl \
+	wget \
+	# Build essentials
+	build-base \
+	# Python and pip
+	python3 \
+	py3-pip \
+	# Node and npm
+	nodejs \
+	npm && \
+	# Clean up the cache to reduce image size
+	rm -rf /var/cache/apk/* && \
+	# Create symlink for python
+	ln -sf /usr/bin/python3 /usr/bin/python
 
 # Install pnpm in a separate layer for better caching
 RUN npm install -g pnpm && \
-    rm -rf /root/.npm
+	rm -rf /root/.npm
 
 # Set up pnpm environment
 ENV PNPM_HOME=/usr/local/bin
