@@ -352,11 +352,23 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 		// Start container, and destroy any active containers
 		await userContainer.container_initialize()
-		const output = await userContainer.container_exec(
-			`git clone ${gitConfig.repo} . && git checkout ${gitConfig.ref}`
-		)
-		this.logger.info(`Cloned files: ${JSON.stringify(output)}`)
 
+		// Create a fresh workdir for this build (since we are sharing container instances across builds for now)
+		await userContainer.container_exec({
+			command: `rm -rf ${this.buildWorkDir()} || true`,
+			cwd: '.',
+		})
+		await userContainer.container_exec({ command: `mkdir -p ${this.buildWorkDir()}`, cwd: '.' })
+
+		// Clone the code
+		await userContainer.container_exec({
+			command: `git clone ${gitConfig.repo} .`,
+			cwd: this.buildWorkDir(),
+		})
+		await userContainer.container_exec({
+			command: `git checkout ${gitConfig.ref}`,
+			cwd: this.buildWorkDir(),
+		})
 		this.logger.info('[AutofixAgent] Container initialized.')
 	}
 
@@ -409,8 +421,12 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	async listContainerFiles() {
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
-		const { resources } = await userContainer.container_ls()
+		const { resources } = await userContainer.container_ls(this.buildWorkDir())
 		return { resources }
+	}
+
+	private buildWorkDir() {
+		return `build-${this.state.buildUuid}`
 	}
 }
 
