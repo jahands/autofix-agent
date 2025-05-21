@@ -1,0 +1,13 @@
+**/.DS_Store
+**/.dockerignore
+**/.dev.vars
+**/.den
+**/.dockerignore
+**/.eslintcache
+**/.git
+**/.gitignore
+**/.turbo
+**/.wrangler
+**/Dockerfile
+**/dist
+**/node_modules
