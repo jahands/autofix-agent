@@ -35,7 +35,7 @@
 			// UPDATE WHEN DEPLOYING A NEW IMAGE
 			"class_name": "UserContainer",
 			"configuration": {
-				"image": "./src/container-server/Dockerfile"
+				"image": "autofix-container:dev"
 			},
 			"max_instances": 3
 			// "rollout_step_percentage": 100,
