@@ -33,11 +33,13 @@
 		{
 			"name": "autofix-container-staging",
 			// UPDATE WHEN DEPLOYING A NEW IMAGE
-			"image": "registry.cloudchamber.cfdata.org/autofix-container:9b82fb1",
 			"class_name": "UserContainer",
-			"max_instances": 3,
-			"rollout_step_percentage": 100,
-			"instances": 3
+			"configuration": {
+				"image": "./src/container-server/Dockerfile"
+			},
+			"max_instances": 3
+			// "rollout_step_percentage": 100,
+			// "instances": 3
 		}
 	],
 	"durable_objects": {
