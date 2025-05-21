@@ -10,9 +10,9 @@ export class GitHubClient {
 	}
 
 	async createPullRequest(
-		params: Parameters<typeof this.octokit.pulls.create>
+		params: Parameters<typeof this.octokit.pulls.create>[0]
 	): Promise<{ url: string }> {
-		const resp = await this.octokit.pulls.create(...params)
+		const resp = await this.octokit.pulls.create(params)
 		return { url: resp.url }
 	}
 

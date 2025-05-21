@@ -15,6 +15,7 @@ import { generateText } from 'ai'
 import { GoogleModels } from './ai-models'
 import { workersPrompt } from './autofix.prompts'
 import { fmt } from './format'
+import { GitHubClient } from './github'
 
 /**
  * The status of the agent. This allows us to easily determine the
@@ -77,8 +78,12 @@ type ActionStatus = z.infer<typeof ActionStatus>
 
 type AgentState = {
 	buildUuid: string
+	randomTag: string
 	gitConfig: {
+		branch: string
+		repoURL: string
 		repo: string
+		owner: string
 		ref: string
 	}
 	agentStatus: AgentStatus
@@ -136,8 +141,12 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		this.logger.info(`[AutofixAgent] Queueing agent for build ${buildUuid}`)
 		this.setState({
 			buildUuid,
+			randomTag: crypto.randomUUID(),
 			gitConfig: {
-				repo: `https://github.com/${account}/${repo}.git`,
+				branch: buildMetadata.result.build_trigger_metadata.branch,
+				repoURL: `https://github.com/${account}/${repo}.git`,
+				repo: repo,
+				owner: account,
 				ref: commitSha,
 			},
 			agentStatus: 'queued',
@@ -351,7 +360,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	async handleInitializeContainer(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleInitializeContainer')
 		const { gitConfig } = this.state
-		this.logger.info(`[AutofixAgent] Initializing container for repo: ${gitConfig.repo}`)
+		this.logger.info(`[AutofixAgent] Initializing container for repo: ${gitConfig.repoURL}`)
 
 		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
 		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
@@ -368,7 +377,11 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 		// Clone the code
 		await userContainer.container_exec({
-			command: `git clone ${gitConfig.repo} .`,
+			command: `git config --global url.https://${this.env.DEMO_GITHUB_TOKEN}@github.com.insteadOf https://github.com`,
+			cwd: this.buildWorkDir(),
+		})
+		await userContainer.container_exec({
+			command: `git clone ${gitConfig.repoURL} .`,
 			cwd: this.buildWorkDir(),
 		})
 		await userContainer.container_exec({
@@ -469,24 +482,43 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	async handleCommitChanges(): Promise<void> {
-		this.logger.info('[AutofixAgent] Executing: handleCommitChanges')
-		this.logger.info('[AutofixAgent] Mock: Committing changes...')
-		await new Promise((resolve) => setTimeout(resolve, 100))
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		await userContainer.container_exec({
+			command: `git checkout -b ${this.getAutofixBranch()}`,
+			cwd: this.buildWorkDir(),
+		})
+		await userContainer.container_exec({
+			command: 'git add .',
+			cwd: this.buildWorkDir(),
+		})
+		await userContainer.container_exec({
+			command: 'git commit -m "Autofix Agent fixes"',
+			cwd: this.buildWorkDir(),
+		})
 		this.logger.info('[AutofixAgent] Changes committed.')
 	}
 
 	async handlePushChanges(): Promise<void> {
-		this.logger.info('[AutofixAgent] Executing: handlePushChanges')
-		this.logger.info('[AutofixAgent] Mock: Pushing changes...')
-		await new Promise((resolve) => setTimeout(resolve, 100))
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		await userContainer.container_exec({
+			command: `git push -u origin ${this.getAutofixBranch()}`,
+			cwd: this.buildWorkDir(),
+		})
 		this.logger.info('[AutofixAgent] Changes pushed.')
 	}
 
 	async handleCreatePr(): Promise<void> {
-		this.logger.info('[AutofixAgent] Executing: handleCreatePr')
-		this.logger.info('[AutofixAgent] Mock: Creating PR...')
-		await new Promise((resolve) => setTimeout(resolve, 100))
+		const res = await new GitHubClient(this.env.DEMO_GITHUB_TOKEN).createPullRequest({
+			base: this.state.gitConfig.branch,
+			title: '[Autofix] Your fixed changes!',
+			owner: this.state.gitConfig.owner,
+			repo: this.state.gitConfig.repo,
+			head: this.getAutofixBranch(),
+		})
 		this.logger.info('[AutofixAgent] PR created.')
+		this.logger.info(`[AutofixAgent] PR URL -> ${res.url}`)
 	}
 
 	// ========================== //
@@ -529,6 +561,10 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	private buildWorkDir() {
 		return `build-${this.state.buildUuid}`
+	}
+
+	private getAutofixBranch() {
+		return `autofix-${this.state.buildUuid}-${this.state.randomTag}`
 	}
 }
 
