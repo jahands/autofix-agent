@@ -343,8 +343,11 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	async handleDetectIssues(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleDetectIssues')
-		this.logger.info('[AutofixAgent] Mock: Detecting issues...')
-		await new Promise((resolve) => setTimeout(resolve, 100))
+		this.logger.info('[AutofixAgent] Detecting issues...')
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEV_CLOUDFLARE_ACCOUNT_ID)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		// console.log('PING', await this.pingContainer())
+		const files = await userContainer.container_ls()
 		this.logger.info('[AutofixAgent] Issue detection complete.')
 	}
 

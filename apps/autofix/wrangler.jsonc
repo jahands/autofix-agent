@@ -34,8 +34,9 @@
 			"name": "autofix-container-staging",
 			// UPDATE WHEN DEPLOYING A NEW IMAGE
 			"class_name": "UserContainer",
+			"image_build_context": "../../",
 			"configuration": {
-				"image": "autofix-container:dev"
+				"image": "./src/container-server/Dockerfile"
 			},
 			"max_instances": 3
 			// "rollout_step_percentage": 100,
