@@ -38,8 +38,7 @@ const app = new Hono<App>()
 			const id = c.env.AutofixAgent.idFromName(agentId)
 			const agent = c.env.AutofixAgent.get(id)
 			const ls = await agent.start({
-				repo: 'https://github.com/jahands/autofix-agent.git',
-				branch: 'main',
+				buildUuid: agentId,
 			})
 			return c.json({ agentId, ls })
 		}

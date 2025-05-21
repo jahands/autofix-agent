@@ -1,12 +1,10 @@
 export const MAX_CONTAINERS = 3
 export async function startAndWaitForPort({
-	gitURL,
 	environment,
 	container,
 	portToAwait,
 	maxTries = 10,
 }: {
-	gitURL: string
 	environment: 'development' | 'staging' | 'production' | 'VITEST'
 	container: Container | undefined
 	portToAwait: number
@@ -31,7 +29,6 @@ export async function startAndWaitForPort({
 				console.log('starting container')
 				container.start({
 					enableInternet: true,
-					env: { GIT_CLONE_URL: gitURL },
 				})
 
 				// force DO to keep track of running state
