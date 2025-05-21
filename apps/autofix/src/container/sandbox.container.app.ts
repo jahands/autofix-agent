@@ -1,15 +1,14 @@
-import { exec, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import { serve } from '@hono/node-server'
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
-import { streamText } from 'hono/streaming'
 import mime from 'mime'
 import { z } from 'zod'
 
-import { ExecParams, FileWrite } from '../shared/schema.js'
+import { FileWrite } from '../shared/schema.js'
 import {
 	DIRECTORY_CONTENT_TYPE,
 	get_file_name_from_path,
@@ -154,55 +153,6 @@ app.delete('/files/contents/*', async (c) => {
 
 		throw e
 	}
-})
-
-/**
- * POST /exec
- *
- * Execute a command in a shell
- */
-app.post('/exec', zValidator('json', ExecParams), (c) => {
-	const execParams = c.req.valid('json')
-	const proc = exec(execParams.args)
-	return streamText(c, async (stream) => {
-		return new Promise((resolve, reject) => {
-			if (proc.stdout) {
-				// Stream data from stdout
-				proc.stdout.on('data', async (data) => {
-					await stream.write(data.toString())
-				})
-			} else {
-				void stream.write('WARNING: no stdout stream for process')
-			}
-
-			if (execParams.streamStderr) {
-				if (proc.stderr) {
-					proc.stderr.on('data', async (data) => {
-						await stream.write(data.toString())
-					})
-				} else {
-					void stream.write('WARNING: no stderr stream for process')
-				}
-			}
-
-			// Handle process exit
-			proc.on('exit', async (code) => {
-				await stream.write(`Process exited with code: ${code}`)
-				if (code === 0) {
-					await stream.close()
-					resolve()
-				} else {
-					console.error(`Process exited with code ${code}`)
-					reject(new Error(`Process failed with code ${code}`))
-				}
-			})
-
-			proc.on('error', (err) => {
-				console.error('Error with process: ', err)
-				reject(err)
-			})
-		})
-	})
 })
 
 app.post(
