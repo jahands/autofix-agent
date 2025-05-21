@@ -9,3 +9,4 @@ dist
 .wrangler
 .eslintcache
 .DS_Store
+Dockerfile
