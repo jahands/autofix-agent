@@ -14,6 +14,7 @@ const ExecResult = z.object({
 	stdout: z.string(),
 	stderr: z.string(),
 })
+
 export class UserContainer extends DurableObject<Env> {
 	constructor(
 		public ctx: DurableObjectState,
@@ -60,13 +61,16 @@ export class UserContainer extends DurableObject<Env> {
 		return await res.text()
 	}
 
-	async container_exec(command: string): Promise<ExecResult> {
+	async container_exec(params: { command: string; cwd: string }): Promise<ExecResult> {
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
 			new Request(`http://host:${OPEN_CONTAINER_PORT}/spawnSync`, {
 				method: 'POST',
-				body: command,
+				body: JSON.stringify(params),
+				headers: {
+					'Content-Type': 'application/json',
+				},
 			}),
 			OPEN_CONTAINER_PORT
 		)
@@ -81,11 +85,13 @@ export class UserContainer extends DurableObject<Env> {
 		return parsed
 	}
 
-	async container_ls(): Promise<FileList> {
+	async container_ls(dir: string): Promise<FileList> {
+		const url = new URL(`http://host:${OPEN_CONTAINER_PORT}/files/ls`)
+		url.searchParams.append('dir', dir)
 		const res = await proxyFetch(
 			this.env.ENVIRONMENT,
 			this.ctx.container,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/ls`),
+			new Request(url.toString()),
 			OPEN_CONTAINER_PORT
 		)
 		if (!res || !res.ok) {
@@ -106,6 +112,7 @@ export class UserContainer extends DurableObject<Env> {
 		)
 		return res.ok
 	}
+
 	async container_file_read(
 		filePath: string
 	): Promise<

@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { streamText } from 'hono/streaming'
 import mime from 'mime'
+import { z } from 'zod'
 
 import { ExecParams, FileWrite } from '../shared/schema.js'
 import {
@@ -31,9 +32,9 @@ app.get('/ping', (c) => c.text('pong!'))
  *
  * Gets all files in a directory
  */
-app.get('/files/ls', async (c) => {
+app.get('/files/ls', zValidator('query', z.object({ dir: z.string() })), async (c) => {
 	try {
-		const directoriesToRead = ['.']
+		const directoriesToRead = [c.req.valid('query').dir]
 		const files: FileList = { resources: [] }
 		const baseCwd = process.cwd()
 
@@ -204,18 +205,22 @@ app.post('/exec', zValidator('json', ExecParams), (c) => {
 	})
 })
 
-app.post('/spawnSync', async (c) => {
-	const command = await c.req.text()
-	const result = spawnSync(command, { shell: true })
-	if (result.error) {
-		return c.json({ error: result.error }, 500)
+app.post(
+	'/spawnSync',
+	zValidator('json', z.object({ command: z.string(), cwd: z.string() })),
+	async (c) => {
+		const { command, cwd } = c.req.valid('json')
+		const result = spawnSync(command, { shell: true, cwd })
+		if (result.error) {
+			return c.json({ error: result.error }, 500)
+		}
+		return c.json({
+			status: result.status,
+			stdout: result.stdout.toString().trim(),
+			stderr: result.stderr.toString().trim(),
+		})
 	}
-	return c.json({
-		status: result.status,
-		stdout: result.stdout.toString().trim(),
-		stderr: result.stderr.toString().trim(),
-	})
-})
+)
 
 serve({
 	fetch: app.fetch,
