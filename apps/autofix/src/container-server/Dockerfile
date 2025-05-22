@@ -9,6 +9,8 @@ ARG NODE_EXTRA_CA_CERTS=""
 # Install warp certs as root if NODE_EXTRA_CA_CERTS is provided
 COPY apps/autofix/src/container/install-scripts/install-cloudflare-warp-certs.sh /installation/
 RUN /installation/install-cloudflare-warp-certs.sh
+# Cleanup warp certs script after execution
+RUN rm /installation/install-cloudflare-warp-certs.sh
 
 RUN apt-get -y update && \
     apt-get install -y \
