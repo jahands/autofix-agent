@@ -1,43 +1,41 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "autofix",
+	"name": "autofix-dev",
 	"account_id": "6702657b6aa048cf3081ff3ff3c9c52f", // Cloudflare MCP
 	"main": "src/autofix.app.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [{ "pattern": "autofix-staging.mcp.cloudflare.com", "custom_domain": true }],
 	"workers_dev": false,
 	"logpush": true,
 	"observability": {
 		"enabled": true
 	},
 	"vars": {
-		"ENVIRONMENT": "staging", // overridden during deployment
-		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"ENVIRONMENT": "development",
+		"SENTRY_RELEASE": "development",
 		"DEMO_CLOUDFLARE_ACCOUNT_TAG": "2cd7119dd8f3534cd99dcded06048a62", // Jacob's test account
 		// DEMO_CLOUDFLARE_API_TOKEN should be set as a secret
 		"AI_GATEWAY_ACCOUNT_ID": "6702657b6aa048cf3081ff3ff3c9c52f", // Cloudflare MCP
 		"AI_GATEWAY_NAME": "autofix-agent-gateway"
 		// AI_GATEWAY_API_KEY should be set as a secret
 	},
-	"migrations": [
-		{
-			"new_sqlite_classes": ["AutofixAgent", "UserContainer"],
-			"tag": "v1"
-		}
-	],
 	"ai": {
 		"binding": "AI"
 	},
 	"containers": [
 		{
-			"name": "autofix-container-staging",
-			// UPDATE WHEN DEPLOYING A NEW IMAGE
-			"image": "registry.cloudchamber.cfdata.org/autofix-container:9b82fb1",
+			"name": "autofix-container-dev",
+			"image": "autofix-container:dev",
 			"class_name": "UserContainer",
 			"max_instances": 3,
-			"rollout_step_percentage": 100,
-			"instances": 3
+			"instances": 3,
+			"rollout_step_percentage": 100
+		}
+	],
+	"migrations": [
+		{
+			"new_sqlite_classes": ["AutofixAgent", "UserContainer"],
+			"tag": "v1"
 		}
 	],
 	"durable_objects": {
@@ -51,5 +49,48 @@
 				"name": "USER_CONTAINER"
 			}
 		]
+	},
+
+	"env": {
+		"staging": {
+			"name": "autofix-staging",
+			"account_id": "6702657b6aa048cf3081ff3ff3c9c52f", // Cloudflare MCP
+			"routes": [{ "pattern": "autofix-staging.mcp.cloudflare.com", "custom_domain": true }],
+			"vars": {
+				"ENVIRONMENT": "development", // overridden during deployment
+				"SENTRY_RELEASE": "unknown", // overridden during deployment
+				"DEMO_CLOUDFLARE_ACCOUNT_TAG": "2cd7119dd8f3534cd99dcded06048a62", // Jacob's test account
+				// DEMO_CLOUDFLARE_API_TOKEN should be set as a secret
+				"AI_GATEWAY_ACCOUNT_ID": "6702657b6aa048cf3081ff3ff3c9c52f", // Cloudflare MCP
+				"AI_GATEWAY_NAME": "autofix-agent-gateway"
+				// AI_GATEWAY_API_KEY should be set as a secret
+			},
+			"ai": {
+				"binding": "AI"
+			},
+			"containers": [
+				{
+					"name": "autofix-container-staging",
+					// UPDATE WHEN DEPLOYING A NEW IMAGE
+					"image": "registry.cloudchamber.cfdata.org/autofix-container:9b82fb1",
+					"class_name": "UserContainer",
+					"max_instances": 3,
+					"instances": 3,
+					"rollout_step_percentage": 100
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "AutofixAgent",
+						"name": "AutofixAgent"
+					},
+					{
+						"class_name": "UserContainer",
+						"name": "USER_CONTAINER"
+					}
+				]
+			}
+		}
 	}
 }
