@@ -1,9 +1,9 @@
 import path from 'path'
-import { DurableObject } from 'cloudflare:workers'
+import { Container } from 'cf-containers'
 import { z } from 'zod'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
-import { proxyFetch, startAndWaitForPort } from './containerHelpers'
+import { proxyFetch } from './containerHelpers'
 import { fileToBase64 } from './utils'
 
 import type { Env } from '../autofix.context'
@@ -16,7 +16,10 @@ const ExecResult = z.object({
 	stderr: z.string(),
 })
 
-export class UserContainer extends DurableObject<Env> {
+export class UserContainer extends Container<Env> {
+	defaultPort = OPEN_CONTAINER_PORT
+	sleepAfter = '5m'
+
 	constructor(
 		public ctx: DurableObjectState,
 		public env: Env
@@ -25,36 +28,18 @@ export class UserContainer extends DurableObject<Env> {
 		super(ctx, env)
 	}
 
-	async destroyContainer(): Promise<void> {
-		await this.ctx.container?.destroy()
-	}
-
-	async container_initialize(): Promise<string> {
+	async container_initialize(): Promise<void> {
 		// kill container
-		await this.destroyContainer()
+		await this.stopContainer()
 
-		// start container
-		let startedContainer = false
-		await this.ctx.blockConcurrencyWhile(async () => {
-			startedContainer = await startAndWaitForPort({
-				environment: this.env.ENVIRONMENT,
-				container: this.ctx.container,
-				portToAwait: OPEN_CONTAINER_PORT,
-			})
-		})
-		if (!startedContainer) {
-			throw new Error('Failed to start container')
-		}
-
-		return `Created new container`
+		await this.startAndWaitForPorts(OPEN_CONTAINER_PORT)
 	}
 
 	async container_ping(): Promise<string> {
 		const res = await proxyFetch(
+			this,
 			this.env.ENVIRONMENT,
-			this.ctx.container,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/ping`),
-			OPEN_CONTAINER_PORT
+			new Request(`http://host:${OPEN_CONTAINER_PORT}/ping`)
 		)
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
@@ -64,16 +49,15 @@ export class UserContainer extends DurableObject<Env> {
 
 	async container_exec(params: { command: string; cwd: string }): Promise<ExecResult> {
 		const res = await proxyFetch(
+			this,
 			this.env.ENVIRONMENT,
-			this.ctx.container,
 			new Request(`http://host:${OPEN_CONTAINER_PORT}/spawnSync`, {
 				method: 'POST',
 				body: JSON.stringify(params),
 				headers: {
 					'Content-Type': 'application/json',
 				},
-			}),
-			OPEN_CONTAINER_PORT
+			})
 		)
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
@@ -89,12 +73,7 @@ export class UserContainer extends DurableObject<Env> {
 	async container_ls(dir: string): Promise<FileList> {
 		const url = new URL(`http://host:${OPEN_CONTAINER_PORT}/files/ls`)
 		url.searchParams.append('dir', dir)
-		const res = await proxyFetch(
-			this.env.ENVIRONMENT,
-			this.ctx.container,
-			new Request(url.toString()),
-			OPEN_CONTAINER_PORT
-		)
+		const res = await proxyFetch(this, this.env.ENVIRONMENT, new Request(url.toString()))
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
@@ -106,12 +85,11 @@ export class UserContainer extends DurableObject<Env> {
 		const { cwd, filePath } = params
 		const fullPath = path.join(cwd, filePath)
 		const res = await proxyFetch(
+			this,
 			this.env.ENVIRONMENT,
-			this.ctx.container,
 			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`, {
 				method: 'DELETE',
-			}),
-			OPEN_CONTAINER_PORT
+			})
 		)
 		return res.ok
 	}
@@ -126,10 +104,9 @@ export class UserContainer extends DurableObject<Env> {
 		const { cwd, filePath } = params
 		const fullPath = path.join(cwd, filePath)
 		const res = await proxyFetch(
+			this,
 			this.env.ENVIRONMENT,
-			this.ctx.container,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`),
-			OPEN_CONTAINER_PORT
+			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`)
 		)
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
@@ -164,16 +141,15 @@ export class UserContainer extends DurableObject<Env> {
 			text,
 		}
 		const res = await proxyFetch(
+			this,
 			this.env.ENVIRONMENT,
-			this.ctx.container,
 			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents`, {
 				method: 'POST',
 				body: JSON.stringify(body),
 				headers: {
 					'content-type': 'application/json',
 				},
-			}),
-			OPEN_CONTAINER_PORT
+			})
 		)
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)

@@ -71,10 +71,18 @@
 				{
 					"name": "autofix-container-staging",
 					// UPDATE WHEN DEPLOYING A NEW IMAGE
-					"image": "registry.cloudchamber.cfdata.org/autofix-container:9b82fb1",
+					"image": "registry.cloudchamber.cfdata.org/autofix-container:6a9a4d6",
 					"class_name": "UserContainer",
-					"max_instances": 3,
-					"rollout_step_percentage": 100
+					"max_instances": 10,
+					"rollout_step_percentage": 100,
+					"configuration": {
+						"vcpu": 1,
+						"memory": "2000MB",
+						"disk": {
+							"size": "4000MB"
+						}
+					},
+					"scheduling_policy": "moon"
 				}
 			],
 			"durable_objects": {
