@@ -7,13 +7,7 @@ A Cloudflare Workers application using Hono and Vite
 ### Run in dev mode
 
 ```sh
-pnpm turbo dev
-```
-
-### Run in preview mode
-
-```sh
-pnpm turbo preview
+pnpm dev
 ```
 
 ### Run tests
@@ -25,5 +19,5 @@ pnpm test
 ### Deploy
 
 ```sh
-pnpm turbo deploy
+pnpm turbo deploy -- -e staging
 ```
