@@ -28,7 +28,6 @@
 			"image": "autofix-container:dev",
 			"class_name": "UserContainer",
 			"max_instances": 3,
-			"instances": 3,
 			"rollout_step_percentage": 100
 		}
 	],
@@ -57,7 +56,7 @@
 			"account_id": "6702657b6aa048cf3081ff3ff3c9c52f", // Cloudflare MCP
 			"routes": [{ "pattern": "autofix-staging.mcp.cloudflare.com", "custom_domain": true }],
 			"vars": {
-				"ENVIRONMENT": "development", // overridden during deployment
+				"ENVIRONMENT": "staging", // overridden during deployment
 				"SENTRY_RELEASE": "unknown", // overridden during deployment
 				"DEMO_CLOUDFLARE_ACCOUNT_TAG": "2cd7119dd8f3534cd99dcded06048a62", // Jacob's test account
 				// DEMO_CLOUDFLARE_API_TOKEN should be set as a secret
@@ -75,7 +74,6 @@
 					"image": "registry.cloudchamber.cfdata.org/autofix-container:9b82fb1",
 					"class_name": "UserContainer",
 					"max_instances": 3,
-					"instances": 3,
 					"rollout_step_percentage": 100
 				}
 			],
