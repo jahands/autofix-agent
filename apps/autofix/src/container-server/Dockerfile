@@ -1,5 +1,5 @@
 # Use Alpine as base for minimal size
-FROM ubuntu:24.04 as base
+FROM ubuntu:24.04 AS base
 ARG NODE_EXTRA_CA_CERTS=""
 
 # Install necessary packages while minimizing layers
@@ -13,24 +13,24 @@ RUN /installation/install-cloudflare-warp-certs.sh
 RUN rm /installation/install-cloudflare-warp-certs.sh
 
 RUN apt-get -y update && \
-    apt-get install -y \
-    # Core utilities
-    git \
-    curl \
-    wget \
-    # Build essentials
-    build-essential \
-    # Python and pip
-    python3 \
-    # Node and npm
-    nodejs \
-    npm && \
-    # Create symlink for python
-    ln -sf /usr/bin/python3 /usr/bin/python
+	apt-get install -y \
+	# Core utilities
+	git \
+	curl \
+	wget \
+	# Build essentials
+	build-essential \
+	# Python and pip
+	python3 \
+	# Node and npm
+	nodejs \
+	npm && \
+	# Create symlink for python
+	ln -sf /usr/bin/python3 /usr/bin/python
 
 # Install pnpm in a separate layer for better caching
 RUN npm install -g pnpm && \
-    rm -rf /root/.npm
+	rm -rf /root/.npm
 
 # Set up pnpm environment
 ENV PNPM_HOME=/usr/local/bin
@@ -58,7 +58,8 @@ FROM base AS installer
 WORKDIR /app
 
 COPY --from=prune /app/out/ .
-RUN pnpm install --frozen-lockfile --only=production
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+	pnpm install --frozen-lockfile --only=production --child-concurrency=10
 
 WORKDIR /app/apps/autofix
 
