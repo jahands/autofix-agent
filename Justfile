@@ -15,6 +15,16 @@ install:
 dev *flags:
   pnpm run dev {{flags}}
 
+# Run dev:container script
+[no-cd]
+dev-container *flags:
+  pnpm run dev:container {{flags}}
+
+# Run tail script
+[no-cd]
+tail *flags:
+  pnpm tail {{flags}}
+
 # Run preview script (usually only used in apps using Vite)
 [no-cd]
 preview:
@@ -42,10 +52,19 @@ test *flags:
 build *flags:
   pnpm turbo build {{flags}}
 
+[no-cd]
+build-container *flags:
+  pnpm autofix build-container {{flags}}
+
 # Deploy Workers, etc.
 [no-cd]
 deploy *flags:
   pnpm turbo deploy {{flags}}
+
+# Run autofix CLI (used for working on apps/autofix)
+[no-cd]
+autofix *flags:
+  @pnpm autofix {{flags}}
 
 # Update dependencies using syncpack
 update-deps:

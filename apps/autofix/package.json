@@ -5,13 +5,15 @@
 	"sideEffects": false,
 	"type": "module",
 	"scripts": {
-		"build:container": "docker build --platform linux/amd64 --tag autofix-container:$(git rev-parse --short HEAD) -f ./src/container-server/Dockerfile ../../ && wrangler containers push autofix-container:$(git rev-parse --short HEAD)",
+		"build:container": "autofix build-container -e staging",
 		"check:lint": "run-eslint-default",
 		"check:types": "run-tsc",
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-wrangler-dev",
+		"dev:container": "docker compose up",
 		"fix:workers-types": "run-wrangler-types",
 		"start:container": "tsx src/container/sandbox.container.app.ts",
+		"tail": "autofix tail",
 		"test": "run-vitest"
 	},
 	"dependencies": {
@@ -32,6 +34,7 @@
 		"itty-time": "2.0.1",
 		"mime": "4.0.7",
 		"mock-fs": "5.5.0",
+		"p-retry": "6.2.1",
 		"ts-pattern": "5.7.1",
 		"tsx": "4.19.4",
 		"workers-ai-provider": "0.4.1",

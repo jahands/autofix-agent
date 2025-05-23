@@ -7,17 +7,24 @@ A Cloudflare Workers application using Hono and Vite
 ### Run in dev mode
 
 ```sh
-pnpm dev
+# run Worker in dev mode
+just dev
+
+# run the development container (Ctrl+C to stop)
+just dev:container
+
+# build, push, and update wrangler.jsonc with new container image
+just build-container
 ```
 
 ### Run tests
 
 ```sh
-pnpm test
+just test
 ```
 
 ### Deploy
 
 ```sh
-pnpm turbo deploy -- -e staging
+just deploy -- -e staging
 ```
