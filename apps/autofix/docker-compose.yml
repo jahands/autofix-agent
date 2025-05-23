@@ -1,0 +1,13 @@
+services:
+  autofix-container:
+    build:
+      context: ../..
+      dockerfile: apps/autofix/src/container-server/Dockerfile
+      args:
+        NODE_EXTRA_CA_CERTS: /etc/ssl/certs/Cloudflare_CA.pem
+    environment:
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/Cloudflare_CA.pem
+    ports:
+      - '8080:8080'
+    stdin_open: true
+    tty: true

@@ -1,5 +1,6 @@
 import path from 'path'
 import { Container } from 'cf-containers'
+import pRetry from 'p-retry'
 import { z } from 'zod'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
@@ -30,9 +31,14 @@ export class UserContainer extends Container<Env> {
 
 	async container_initialize(): Promise<void> {
 		// kill container
-		await this.stopContainer()
+		// await this.stopContainer()
 
-		await this.startAndWaitForPorts(OPEN_CONTAINER_PORT)
+		await pRetry(async () => this.startAndWaitForPorts(OPEN_CONTAINER_PORT), {
+			minTimeout: 200,
+			maxTimeout: 1000,
+			factor: 2,
+			retries: 3,
+		})
 	}
 
 	async container_ping(): Promise<string> {
