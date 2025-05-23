@@ -1,10 +1,10 @@
 import path from 'path'
 import { Container } from 'cf-containers'
-import pRetry from 'p-retry'
+import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 
 import { OPEN_CONTAINER_PORT } from '../shared/consts'
-import { proxyFetch } from './containerHelpers'
+import { getMockContainerCtx, proxyContainerFetch, startContainer } from './containerHelpers'
 import { fileToBase64 } from './utils'
 
 import type { Env } from '../autofix.context'
@@ -20,33 +20,30 @@ const ExecResult = z.object({
 export class UserContainer extends Container<Env> {
 	defaultPort = OPEN_CONTAINER_PORT
 	sleepAfter = '5m'
+	// Enable manual start in development
+	manualStart = env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST' ? true : false
 
 	constructor(
 		public ctx: DurableObjectState,
 		public env: Env
 	) {
+		if (env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST') {
+			ctx.container = getMockContainerCtx()
+		}
 		console.log('creating user container DO')
 		super(ctx, env)
 	}
 
 	async container_initialize(): Promise<void> {
-		// kill container
-		// await this.stopContainer()
-
-		await pRetry(async () => this.startAndWaitForPorts(OPEN_CONTAINER_PORT), {
-			minTimeout: 200,
-			maxTimeout: 1000,
-			factor: 2,
-			retries: 3,
-		})
+		await startContainer({ container: this, environment: this.env.ENVIRONMENT })
 	}
 
 	async container_ping(): Promise<string> {
-		const res = await proxyFetch(
-			this,
-			this.env.ENVIRONMENT,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/ping`)
-		)
+		const res = await proxyContainerFetch({
+			container: this,
+			environment: this.env.ENVIRONMENT,
+			request: new Request(`http://host:${OPEN_CONTAINER_PORT}/ping`),
+		})
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
@@ -54,17 +51,17 @@ export class UserContainer extends Container<Env> {
 	}
 
 	async container_exec(params: { command: string; cwd: string }): Promise<ExecResult> {
-		const res = await proxyFetch(
-			this,
-			this.env.ENVIRONMENT,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/spawnSync`, {
+		const res = await proxyContainerFetch({
+			container: this,
+			environment: this.env.ENVIRONMENT,
+			request: new Request(`http://host:${OPEN_CONTAINER_PORT}/spawnSync`, {
 				method: 'POST',
 				body: JSON.stringify(params),
 				headers: {
 					'Content-Type': 'application/json',
 				},
-			})
-		)
+			}),
+		})
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
@@ -79,7 +76,11 @@ export class UserContainer extends Container<Env> {
 	async container_ls(dir: string): Promise<FileList> {
 		const url = new URL(`http://host:${OPEN_CONTAINER_PORT}/files/ls`)
 		url.searchParams.append('dir', dir)
-		const res = await proxyFetch(this, this.env.ENVIRONMENT, new Request(url.toString()))
+		const res = await proxyContainerFetch({
+			container: this,
+			environment: this.env.ENVIRONMENT,
+			request: new Request(url.toString()),
+		})
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
@@ -90,13 +91,13 @@ export class UserContainer extends Container<Env> {
 	async container_file_delete(params: { filePath: string; cwd: string }): Promise<boolean> {
 		const { cwd, filePath } = params
 		const fullPath = path.join(cwd, filePath)
-		const res = await proxyFetch(
-			this,
-			this.env.ENVIRONMENT,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`, {
+		const res = await proxyContainerFetch({
+			container: this,
+			environment: this.env.ENVIRONMENT,
+			request: new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`, {
 				method: 'DELETE',
-			})
-		)
+			}),
+		})
 		return res.ok
 	}
 
@@ -109,11 +110,11 @@ export class UserContainer extends Container<Env> {
 	> {
 		const { cwd, filePath } = params
 		const fullPath = path.join(cwd, filePath)
-		const res = await proxyFetch(
-			this,
-			this.env.ENVIRONMENT,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`)
-		)
+		const res = await proxyContainerFetch({
+			container: this,
+			environment: this.env.ENVIRONMENT,
+			request: new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents/${fullPath}`),
+		})
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
@@ -146,17 +147,17 @@ export class UserContainer extends Container<Env> {
 			path: path.join(cwd, filePath),
 			text,
 		}
-		const res = await proxyFetch(
-			this,
-			this.env.ENVIRONMENT,
-			new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents`, {
+		const res = await proxyContainerFetch({
+			container: this,
+			environment: this.env.ENVIRONMENT,
+			request: new Request(`http://host:${OPEN_CONTAINER_PORT}/files/contents`, {
 				method: 'POST',
 				body: JSON.stringify(body),
 				headers: {
 					'content-type': 'application/json',
 				},
-			})
-		)
+			}),
+		})
 		if (!res || !res.ok) {
 			throw new Error(`Request to container failed: ${await res.text()}`)
 		}
