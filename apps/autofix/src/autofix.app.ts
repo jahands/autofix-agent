@@ -11,8 +11,8 @@ export { AutofixAgent } from './AutofixAgent'
 export { UserContainer } from './container-server/userContainer'
 
 function getAgent(env: Env, param: { agentId: string }) {
-	const id = env.AutofixAgent.idFromName(param.agentId)
-	const agent = env.AutofixAgent.get(id)
+	const id = env.AUTOFIX_AGENT.idFromName(param.agentId)
+	const agent = env.AUTOFIX_AGENT.get(id)
 	return { agentId: param.agentId, agent }
 }
 
