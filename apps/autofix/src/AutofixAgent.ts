@@ -13,6 +13,7 @@ import { generateText } from 'ai'
 import { GoogleModels } from './ai-models'
 import { fmt } from './format'
 import { GitHubClient } from './github'
+import { throwError } from './shared/error'
 
 const AgentActions = {
 	initialize_container: { description: 'Initialize the container for the repository.' },
@@ -147,7 +148,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		this.setState({
 			...this.state,
 			status: 'stopped',
-			finalAction: actions.at(-1)!.name,
+			finalAction: actions.at(-1)?.name ?? throwError('unexpected empty list of actions'),
 			outcome: { type: 'success' },
 		})
 	}
