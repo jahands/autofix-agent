@@ -247,6 +247,60 @@ class AutofixAgent extends Agent<Env, AgentState> {
 					return { contents }
 				},
 			}),
+			installDependencies: tool({
+				description: fmt.trim(`
+					Install project dependencies using the appropriate package manager.
+					Detects and uses the correct package manager based on lock files:
+					- npm (package-lock.json)
+					- yarn (yarn.lock)
+					- pnpm (pnpm-lock.yaml)
+					- bun (bun.lockb)
+
+					Example:
+					installCommand: "npm install" or "yarn install" or "pnpm install" or "bun install"
+
+					Returns success status and any error details if the command fails.
+				`),
+				parameters: z3.object({ installCommand: z3.string() }),
+				execute: async ({ installCommand }) => {
+					try {
+						await this.installDependencies(installCommand)
+						return JSON.stringify({ success: true, message: 'Dependencies installed successfully' })
+					} catch (error) {
+						return JSON.stringify({
+							success: false,
+							error: error instanceof Error ? error.message : String(error),
+							command: installCommand,
+						})
+					}
+				},
+			}),
+			buildProject: tool({
+				description: fmt.trim(`
+					Builds the project using the specified command.
+					IMPORTANT: Dependencies should be installed first using the installDependencies tool.
+					If a package.json exists with a build script, it will be used.
+					The command must always include 'npx wrangler build' to ensure proper Workers deployment.
+
+					Example:
+					buildCommand: "npm run build && npx wrangler build"
+
+					Returns success status and any error details if the build fails.
+				`),
+				parameters: z3.object({ buildCommand: z3.string() }),
+				execute: async ({ buildCommand }) => {
+					try {
+						await this.buildProject(buildCommand)
+						return JSON.stringify({ success: true, message: 'Project built successfully' })
+					} catch (error) {
+						return JSON.stringify({
+							success: false,
+							error: error instanceof Error ? error.message : String(error),
+							command: buildCommand,
+						})
+					}
+				},
+			}),
 		}
 
 		const workersBuilds = new WorkersBuildsClient({
@@ -267,6 +321,14 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				- Infer what type of project the user intends to deploy based on the provided repository structure and contents
 				- If you can't find any code, then assume the repo is a static website that should be deployed directly
 				- You MUST update the files to fix the issue
+				- IMPORTANT: Always install dependencies first using the installDependencies tool before attempting to build
+				- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
+				- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
+				- DO NOT modify existing build scripts in package.json unless absolutely necessary - proper dependency installation should resolve "command not found" errors
+				- Avoid using "pnpm exec", "npm exec", or "yarn exec" in build scripts - these are unnecessary if dependencies are properly installed
+				- DO NOT add "engines" fields to package.json unless the build explicitly fails due to Node.js version incompatibility
+				- Focus on the actual build failure, not on potential improvements or optimizations
+				- Only make changes that are directly required to fix the specific build error
 
 			 Note:
 				- The target deployment platform is Cloudflare Workers
@@ -383,6 +445,24 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			filePath,
 		})
 		return contents
+	}
+
+	async buildProject(buildCommand: string) {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEMO_CLOUDFLARE_ACCOUNT_TAG)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		return userContainer.container_exec({
+			command: buildCommand,
+			cwd: this.buildWorkDir(),
+		})
+	}
+
+	async installDependencies(installCommand: string) {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEMO_CLOUDFLARE_ACCOUNT_TAG)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		return userContainer.container_exec({
+			command: installCommand,
+			cwd: this.buildWorkDir(),
+		})
 	}
 
 	private buildWorkDir() {

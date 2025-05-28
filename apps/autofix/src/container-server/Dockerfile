@@ -21,16 +21,19 @@ RUN apt-get -y update && \
 	# Build essentials
 	build-essential \
 	# Python and pip
-	python3 \
-	# Node and npm
-	nodejs \
-	npm && \
+	python3 && \
 	# Create symlink for python
 	ln -sf /usr/bin/python3 /usr/bin/python
 
-# Install pnpm in a separate layer for better caching
-RUN npm install -g pnpm && \
-	rm -rf /root/.npm
+ENV HOME=/root
+
+# todo: add this script to the repo instead of piping curl to bash
+RUN curl -fsSL https://sh.uuid.rocks/install/mise | MISE_VERSION=v2025.5.15 bash
+ENV PATH=$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH
+
+# Install common tools
+RUN mise use -g node@22 pnpm@10 bun@1 yarn@4
+
 
 # Set up pnpm environment
 ENV PNPM_HOME=/usr/local/bin
@@ -63,7 +66,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 WORKDIR /app/apps/autofix
 
-RUN mkdir -p workdir
+RUN mkdir -p /work
+
+# Ensure tools like pnpm are not interactive
+ENV CI=1
 
 # Expose the port your Node.js server will run on
 EXPOSE 8080

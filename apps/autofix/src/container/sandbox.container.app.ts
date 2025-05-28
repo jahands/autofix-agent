@@ -18,7 +18,7 @@ import {
 
 import type { FileList } from '../shared/schema.js'
 
-process.chdir('workdir')
+process.chdir('/work')
 
 const app = new Hono()
 
