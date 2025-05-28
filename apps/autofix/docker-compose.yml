@@ -9,5 +9,11 @@ services:
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/Cloudflare_CA.pem
     ports:
       - '8080:8080'
+    stop_grace_period: 0s
     stdin_open: true
     tty: true
+    develop:
+      watch:
+        # rebuild if anything in the repo changes
+        - action: rebuild
+          path: ../../
