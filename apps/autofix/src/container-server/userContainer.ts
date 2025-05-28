@@ -32,6 +32,10 @@ export class UserContainer extends Container<Env> {
 		}
 		console.log('creating user container DO')
 		super(ctx, env)
+
+		if (env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST') {
+			this.alarm = async () => {}
+		}
 	}
 
 	async container_initialize(): Promise<void> {

@@ -21,17 +21,17 @@ If you're using python, ALWAYS use \`python3\` instead of \`python\`. ALWAYS mak
 
 ## Resources
 
-The primary resource in this image is the \`container_files\` resource. 
-This is a dynamic resource, which provides a list of files defined by \`file://{filepath}\`, where filepath is relative to the root working directory you are in. 
+The primary resource in this image is the \`container_files\` resource.
+This is a dynamic resource, which provides a list of files defined by \`file://{filepath}\`, where filepath is relative to the root working directory you are in.
 
 The \`container_files_list\` allows you to list all file resources in your working directory. Content is omitted from the response of this tool.
 
-You can read files in the container using the \`container_file_read\` tool. The contents are returned as a text blob with their associated mime type if it is text, 
+You can read files in the container using the \`container_file_read\` tool. The contents are returned as a text blob with their associated mime type if it is text,
 or a base64 encoded blob for binary files.
 
 Directories have the special mime type \`inode/directory\`. If \`container_file_read\` is called on a directory, it returns the contents of the directory as a list of resource URIs.
 
-AVOID manually reading or writing files using the \`container_exec\` tool. You should prefer the dedicated file resources and tools to interact with the filesystem as it is less error prone. 
+AVOID manually reading or writing files using the \`container_exec\` tool. You should prefer the dedicated file resources and tools to interact with the filesystem as it is less error prone.
 
 ## Tools
 
