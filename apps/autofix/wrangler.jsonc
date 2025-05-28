@@ -41,7 +41,7 @@
 		"bindings": [
 			{
 				"class_name": "AutofixAgent",
-				"name": "AutofixAgent"
+				"name": "AUTOFIX_AGENT"
 			},
 			{
 				"class_name": "UserContainer",
@@ -89,7 +89,7 @@
 				"bindings": [
 					{
 						"class_name": "AutofixAgent",
-						"name": "AutofixAgent"
+						"name": "AUTOFIX_AGENT"
 					},
 					{
 						"class_name": "UserContainer",
