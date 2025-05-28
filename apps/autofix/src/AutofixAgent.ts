@@ -24,7 +24,8 @@ const AgentActions = {
 	push_changes: { description: 'Push the new branch with the fix to the remote repository.' },
 	create_pr: { description: 'Create a pull request for the fix.' },
 } as const
-type AgentAction = keyof typeof AgentActions
+
+type AgentAction = { name: keyof typeof AgentActions; description: string }
 
 type Config = {
 	buildUuid: string
@@ -107,16 +108,19 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				},
 			},
 		})
-		await this.schedule(datePlus('1 seconds'), 'autofix')
+		await this.schedule(datePlus('1 seconds'), 'autofix', 1)
 
 		return {
 			message: 'AutofixAgent queued.',
 		}
 	}
 
-	// TODO make this retry by setting another alarm on failure
 	@WithLogTags({ source: 'AutofixAgent', handler: 'autofix' })
 	async autofix() {
+		if (this.state.status !== 'queued') {
+			logger.warn(`Restarting after previous failure...`)
+		}
+
 		const actions = [
 			{ name: 'initialize_container', handler: () => this.handleInitializeContainer() },
 			{ name: 'fix_issues', handler: () => this.handleFixIssues() },
@@ -130,7 +134,10 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				this.setState({
 					...this.state,
 					status: 'running',
-					currentAction: action.name,
+					currentAction: {
+						name: action.name,
+						description: AgentActions[action.name].description,
+					},
 				})
 				await action.handler()
 			} catch (error) {
@@ -138,17 +145,21 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				this.setState({
 					...this.state,
 					status: 'stopped',
-					finalAction: action.name,
+					finalAction: {
+						name: action.name,
+						description: AgentActions[action.name].description,
+					},
 					outcome: { type: 'error', error },
 				})
 				return
 			}
 		}
 
+		const actionName = actions.at(-1)?.name ?? throwError('unexpected empty list of actions')
 		this.setState({
 			...this.state,
 			status: 'stopped',
-			finalAction: actions.at(-1)?.name ?? throwError('unexpected empty list of actions'),
+			finalAction: { name: actionName, description: AgentActions[actionName].description },
 			outcome: { type: 'success' },
 		})
 	}
