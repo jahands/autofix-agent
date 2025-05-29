@@ -13,7 +13,6 @@ import { generateText } from 'ai'
 import { GoogleModels } from './ai-models'
 import { fmt } from './format'
 import { GitHubClient } from './github'
-import { throwError } from './shared/error'
 
 const AgentActions = {
 	initialize_container: { description: 'Initialize the container for the repository.' },
@@ -52,7 +51,7 @@ type AgentState =
 	| {
 			status: 'stopped'
 			config: Config
-			finalAction: AgentAction
+			finalAction: AgentAction | null
 			outcome: { type: 'success' } | { type: 'error'; error: unknown }
 	  }
 
@@ -118,7 +117,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	@WithLogTags({ source: 'AutofixAgent', handler: 'autofix' })
 	async autofix() {
 		if (this.state.status !== 'queued') {
-			logger.warn(`Restarting after previous failure...`)
+			logger.warn(`[AutofixAgent] Restarting after previous failure...`)
 		}
 
 		const actions = [
@@ -129,38 +128,25 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			{ name: 'create_pr', handler: () => this.handleCreatePr() },
 		] as const
 
+		let lastAction = null
+		let lastError = null
 		for (const action of actions) {
 			try {
-				this.setState({
-					...this.state,
-					status: 'running',
-					currentAction: {
-						name: action.name,
-						description: AgentActions[action.name].description,
-					},
-				})
+				lastAction = { name: action.name, ...AgentActions[action.name] }
+				this.setState({ ...this.state, status: 'running', currentAction: lastAction })
 				await action.handler()
 			} catch (error) {
-				logger.error(error)
-				this.setState({
-					...this.state,
-					status: 'stopped',
-					finalAction: {
-						name: action.name,
-						description: AgentActions[action.name].description,
-					},
-					outcome: { type: 'error', error },
-				})
-				return
+				console.error(`[AutofixAgent] error in ${action.name}: ${error}`)
+				lastError = error
+				break
 			}
 		}
 
-		const actionName = actions.at(-1)?.name ?? throwError('unexpected empty list of actions')
 		this.setState({
 			...this.state,
 			status: 'stopped',
-			finalAction: { name: actionName, description: AgentActions[actionName].description },
-			outcome: { type: 'success' },
+			finalAction: lastAction,
+			outcome: lastError === null ? { type: 'success' } : { type: 'error', error: lastError },
 		})
 	}
 
