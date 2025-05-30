@@ -8,8 +8,7 @@ import { logger } from './logger'
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WorkersBuildsClient } from './workersBuilds'
-import { experimental_createMCPClient, tool } from 'ai'
-import { generateText } from 'ai'
+import { experimental_createMCPClient, tool, generateText } from 'ai'
 import { GoogleModels } from './ai-models'
 import { fmt } from './format'
 import { GitHubClient } from './github'
@@ -54,6 +53,15 @@ type AgentState =
 			finalAction: AgentAction | null
 			outcome: { type: 'success' } | { type: 'error'; error: unknown }
 	  }
+
+type BuildMetadata = Awaited<ReturnType<WorkersBuildsClient['getBuildMetadata']>>
+type ToolFunction = {
+	description?: string
+	parameters: z3.ZodSchema
+	execute?: (args: any, options?: any) => Promise<any> | any
+	[key: string]: any // Allow additional properties from the AI SDK
+}
+type DetectionTools = Record<string, ToolFunction>
 
 export { AutofixAgent }
 
@@ -198,7 +206,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	async handleFixIssues(): Promise<void> {
 		this.logger.info('[AutofixAgent] Executing: handleFixIssues')
-		this.logger.info('[AutofixAgent] Fixing issues...')
+		this.logger.info('[AutofixAgent] Analyzing project type and fixing issues...')
 
 		const docsTools = await experimental_createMCPClient({
 			transport: {
@@ -231,6 +239,14 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				execute: async ({ filePath }) => {
 					const contents = await this.getFileContents(filePath)
 					return { contents }
+				},
+			}),
+			deleteFile: tool({
+				description: 'Delete a file in the container with the given path',
+				parameters: z3.object({ filePath: z3.string() }),
+				execute: async ({ filePath }) => {
+					await this.deleteFile(filePath)
+					return { success: true, message: `File ${filePath} deleted successfully` }
 				},
 			}),
 			installDependencies: tool({
@@ -298,33 +314,162 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			workersBuilds.getBuildLogs(this.state.config.buildUuid),
 		])
 
-		const fixItPrompt = fmt.trim(`
+		// Step 1: Detect if this has Pages-specific configurations that need migration
+		const isPages = await this.detectIsPages(tools, metadata, logs)
+		this.logger.info(`[AutofixAgent] Pages migration needed: ${isPages}`)
+
+		// Step 2: Apply Workers-focused fix with optional Pages migration guidance
+		const res = await this.generateWorkersFix(tools, metadata, logs, isPages)
+
+		logger.info(`[AutofixAgent] generateText response`)
+		console.log(res.text) // easier to read this way
+
+		this.logger.info('[AutofixAgent] Issue fixing complete.')
+	}
+
+	private async detectIsPages(
+		tools: DetectionTools,
+		metadata: BuildMetadata,
+		logs: string
+	): Promise<boolean> {
+		const detectionPrompt = fmt.trim(`
+			You are analyzing a project to determine if it has Cloudflare Pages-specific configurations that need to be migrated to Cloudflare Workers equivalents.
+
+			Since Cloudflare Workers now supports static assets hosting, all projects will be deployed as Workers, but projects originally designed for Pages may need configuration migration.
+
+			**Analysis Strategy:**
+			1. **First, analyze the provided build logs and metadata** for specific Cloudflare Pages indicators:
+				- Error messages like "It looks like you've run a Workers-specific command in a Pages project"
+				- References to "wrangler pages deploy" or "pages deploy"
+				- Mentions of "pages_build_output_dir" in configuration or errors
+				- Specific Pages error messages about "functions/" deployment or Pages Functions
+				- Build configuration explicitly showing Pages-specific settings
+
+			2. **Only use file analysis tools if the logs/metadata are inconclusive** and you need to examine:
+				- Wrangler configuration files (wrangler.toml, wrangler.json, wrangler.jsonc) for "pages_build_output_dir"
+				- Project root for functions/ directory (Pages Functions)
+				- Package.json and build scripts for Pages-specific patterns
+
+			**Specific Cloudflare Pages Indicators to Look For:**
+			- Wrangler config with "pages_build_output_dir" (should migrate to Workers Assets format)
+			- Error: "It looks like you've run a Workers-specific command in a Pages project"
+			- References to "wrangler pages deploy" instead of "wrangler deploy"
+			- functions/ directory (Pages Functions - need migration to Worker patterns)
+			- Build errors specifically mentioning Pages deployment patterns
+			- Configuration showing Pages-specific build outputs
+
+			**Note: _headers and _redirects files are supported in Workers Assets and do NOT require migration**
+
+			**Instructions:**
+			- Start by carefully analyzing the build logs and metadata below
+			- Look for SPECIFIC Cloudflare Pages-related errors and configuration, not just the word "Pages"
+			- If you find clear evidence of Cloudflare Pages usage, you can conclude without file analysis
+			- Only use tools like listContainerFiles() and getFileContents() if you need additional information
+			- Be efficient - don't list files unnecessarily
+
+			After your analysis, respond with ONLY a valid JSON object in this exact format:
+			{
+				"needsMigration": boolean,
+				"reasoning": "Brief explanation of why migration is or is not needed based on specific evidence found"
+			}
+
+			Build configuration:
+			${JSON.stringify(metadata, null, 2)}
+
+			Build logs:
+			${logs}
+		`)
+
+		const res = await generateText({
+			model: GoogleModels.GeminiPro(),
+			maxTokens: 20_000,
+			maxSteps: 10,
+			system:
+				'You are an expert at identifying Cloudflare Pages configurations that need migration to Workers. Respond only with valid JSON.',
+			prompt: detectionPrompt,
+			tools,
+		})
+
+		try {
+			const IsPagesResult = z3.object({
+				needsMigration: z3.boolean(),
+				reasoning: z3.string(),
+			})
+
+			// sometimes the LLM adds backticks around the JSON and I can't get it to stop :shrug:
+			const resText = res.text.replace(/^```json\n|```$/g, '')
+			const parsed = IsPagesResult.parse(JSON.parse(resText))
+			this.logger.info(`[AutofixAgent] Migration analysis: ${parsed.reasoning}`)
+			return parsed.needsMigration
+		} catch (error) {
+			this.logger.warn(
+				`[AutofixAgent] Failed to parse migration detection response, defaulting to false: ${error}`
+			)
+			return false
+		}
+	}
+
+	private async generateWorkersFix(
+		tools: DetectionTools,
+		metadata: BuildMetadata,
+		logs: string,
+		isPages: boolean
+	) {
+		const baseGuidelines = fmt.trim(`
+			- This project will be deployed as a Cloudflare Worker (with static assets support if needed)
+			- You have tools available to you, call them as many times as you need
+			- You MUST update the files to fix the issue
+			- IMPORTANT: Always install dependencies first using the installDependencies tool before attempting to build
+			- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
+			- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
+			- The command must always include 'npx wrangler build' to ensure proper Workers deployment
+			- DO NOT modify existing build scripts in package.json unless absolutely necessary
+			- DO NOT add "engines" fields to package.json unless the build explicitly fails due to Node.js version incompatibility
+			- Focus on the actual build failure, not on potential improvements or optimizations
+			- Only make changes that are directly required to fix the specific build error
+			- CRITICAL: For static assets, use Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
+			- NEVER use the deprecated Workers Sites format: [site] bucket = "path" (this is outdated and unsupported)
+			- IMPORTANT: If a wrangler.toml file exists, migrate it to wrangler.jsonc format for better maintainability
+		`)
+
+		const migrationGuidelines = isPages
+			? fmt.trim(`
+			- IMPORTANT: This project appears to have Cloudflare Pages-specific configurations that need migration
+			- Migrate functions/ directory (Pages Functions) to standard Worker script patterns
+			- Update any Pages-specific build configurations to Workers equivalents
+			- CRITICAL: Migrate Pages wrangler configuration to Workers Assets format (NOT Workers Sites):
+				* Replace "pages_build_output_dir" with "assets": {"directory": "path"}
+				* Example: pages_build_output_dir = "./build/client" → "assets": {"directory": "./build/client"}
+				* NEVER use the old Workers Sites format: [site] bucket = "path" (this is deprecated)
+				* ALWAYS use the new Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
+				* If using wrangler.toml, convert the entire configuration to wrangler.jsonc format
+				* Delete the old wrangler.toml file after creating the new wrangler.jsonc
+			- Ensure static assets are properly configured for Workers static assets hosting
+			- NOTE: _headers and _redirects files are supported in Workers Assets and can remain as-is
+			- Remove Pages-specific configurations that don't apply to Workers
+			- Reference both Pages migration docs and Workers static assets docs
+		`)
+			: ''
+
+		const workersPrompt = fmt.trim(`
 			Goal:
-				- Fix the build failure given the logs and configuration provided below
+				- Fix the build failure for this Cloudflare Workers project
 
 			Guidelines:
-				- You have tools available to you, call them as many times as you need
-				- Infer what type of project the user intends to deploy based on the provided repository structure and contents
-				- If you can't find any code, then assume the repo is a static website that should be deployed directly
-				- You MUST update the files to fix the issue
-				- IMPORTANT: Always install dependencies first using the installDependencies tool before attempting to build
-				- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
-				- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
-				- DO NOT modify existing build scripts in package.json unless absolutely necessary - proper dependency installation should resolve "command not found" errors
-				- Avoid using "pnpm exec", "npm exec", or "yarn exec" in build scripts - these are unnecessary if dependencies are properly installed
-				- DO NOT add "engines" fields to package.json unless the build explicitly fails due to Node.js version incompatibility
-				- Focus on the actual build failure, not on potential improvements or optimizations
-				- Only make changes that are directly required to fix the specific build error
+				${baseGuidelines}
+				${migrationGuidelines}
 
-			 Note:
-				- The target deployment platform is Cloudflare Workers
-				- Use the search_cloudflare_documentation tool to find docs for the given project type when proposing changes. Include a link when possible.
+			Note:
+				- The target deployment platform is Cloudflare Workers (with static assets support)
+				- Use the search_cloudflare_documentation tool to find docs for Workers deployment${isPages ? ' and Pages-to-Workers migration' : ''} when proposing changes
 				- Prefer json over toml for configuration files
+				- Workers projects should have a wrangler.toml or wrangler.json configuration file
+				${isPages ? '- If migrating from Pages, explain the equivalent Workers patterns for any Pages-specific features' : ''}
 
 			Final output should contain these 3 sections. Formatted nicely for a Pull Request:
-				- describe the project and why it failed to deploy
-				- describe the relevant docs for deploying this type of project
-				- summarize the fix
+				- describe the project and why it failed to deploy${isPages ? ' (mention if Pages migration was needed)' : ''}
+				- describe the relevant Cloudflare Workers docs for deploying this type of project${isPages ? ' and any Pages migration steps' : ''}
+				- summarize the fix${isPages ? ' and migration changes' : ''}
 
 			Assume the worker shares the same name as the git repo.
 
@@ -335,12 +480,12 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			${logs}
 		`)
 
-		const res = await generateText({
+		return generateText({
 			model: GoogleModels.GeminiPro(),
 			maxTokens: 50_000,
-			maxSteps: 10,
-			system: 'You are an expert at debugging CI failures',
-			prompt: fixItPrompt,
+			maxSteps: 20,
+			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}`,
+			prompt: workersPrompt,
 			onStepFinish: async ({ toolCalls }) => {
 				this.logger.log(
 					`[AutofixAgent] step finished. tools: ${JSON.stringify(toolCalls.map((call) => call.toolName))}`
@@ -348,11 +493,6 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			},
 			tools,
 		})
-
-		logger.info(`[AutofixAgent] generateText response`)
-		console.log(res.text) // easier to read this way
-
-		this.logger.info('[AutofixAgent] Issue fixing complete.')
 	}
 
 	async handleCommitChanges(): Promise<void> {
@@ -431,6 +571,15 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			filePath,
 		})
 		return contents
+	}
+
+	async deleteFile(filePath: string) {
+		const userContainerId = this.env.USER_CONTAINER.idFromName(this.env.DEMO_CLOUDFLARE_ACCOUNT_TAG)
+		const userContainer = this.env.USER_CONTAINER.get(userContainerId)
+		await userContainer.container_exec({
+			command: `rm -f "${filePath}"`,
+			cwd: this.buildWorkDir(),
+		})
 	}
 
 	async buildProject(buildCommand: string) {
