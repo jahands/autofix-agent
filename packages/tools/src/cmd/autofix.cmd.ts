@@ -154,7 +154,7 @@ export const autofixBuildCmd = new Command('build-container')
 		await $`wrangler containers push ${imageName}`
 
 		// update wrangler.jsonc
-		const wranglerPath = `${autofixDir}/wrangler.jsonc`
+		const wranglerPath = `${sandboxDir}/wrangler.jsonc`
 		const wranglerContent = await fs.readFile(wranglerPath, 'utf-8')
 
 		const errors: jsoncParser.ParseError[] = []
