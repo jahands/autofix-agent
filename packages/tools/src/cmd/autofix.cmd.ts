@@ -132,8 +132,13 @@ export const autofixBuildCmd = new Command('build-container')
 	)
 	.action(async ({ env }) => {
 		const repoRoot = getRepoRoot()
-		const autofixDir = `${repoRoot}/apps/autofix`
-		cd(autofixDir)
+
+		const sandboxDir = `${repoRoot}/packages/sandbox-container`
+		cd(sandboxDir)
+		echo(chalk.blue(`Running esbuild`))
+		await $({
+			stdio: 'inherit',
+		})`pnpm run esbuild`
 
 		// get git commit hash
 		const gitCommit = (await $`git rev-parse --short HEAD`.text()).trim()
@@ -143,12 +148,13 @@ export const autofixBuildCmd = new Command('build-container')
 		echo(chalk.blue(`Building container image: ${imageName}`))
 		await $({
 			stdio: 'inherit',
-		})`docker build --platform linux/amd64 --tag ${imageName} -f ./src/container-server/Dockerfile ${repoRoot}`
+		})`docker build --platform linux/amd64 --tag ${imageName} -f ./Dockerfile ${repoRoot}`
 
 		echo(chalk.blue(`Pushing to registry: ${registryImage}`))
 		await $`wrangler containers push ${imageName}`
 
 		// update wrangler.jsonc
+		const autofixDir = `${repoRoot}/apps/autofix`
 		const wranglerPath = `${autofixDir}/wrangler.jsonc`
 		const wranglerContent = await fs.readFile(wranglerPath, 'utf-8')
 

@@ -1,8 +1,6 @@
 import { connect } from 'cloudflare:sockets'
 import pRetry from 'p-retry'
 
-import { OPEN_CONTAINER_PORT } from '../shared/consts'
-
 import type { Container as CfContainer } from 'cf-containers'
 import type { WorkersEnvironment } from '@repo/hono-helpers/src/types'
 import type { Env } from '../autofix.context'
@@ -29,16 +27,18 @@ export function getMockContainerCtx() {
 export async function startContainer({
 	environment,
 	container,
+	port,
 }: {
 	container: CfContainer<Env>
 	environment: WorkersEnvironment
+	port: number
 }): Promise<void> {
 	if (environment === 'development' || environment === 'VITEST') {
 		console.log('Running in dev, assuming locally running container')
 		return
 	}
 
-	await pRetry(async () => container.startAndWaitForPorts(OPEN_CONTAINER_PORT), {
+	await pRetry(async () => container.startAndWaitForPorts(port), {
 		minTimeout: 200,
 		maxTimeout: 1000,
 		factor: 2,
@@ -59,7 +59,7 @@ export async function proxyContainerFetch({
 		const url = request.url
 			.replace('https://', 'http://')
 			.replace('http://host', 'http://localhost')
-		return fetch(url, request.clone() as Request)
+		return fetch(url, request)
 	}
 
 	return await container.containerFetch(request)
