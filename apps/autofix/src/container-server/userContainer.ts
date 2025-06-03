@@ -1,9 +1,11 @@
 import path from 'path'
 import { Container } from 'cf-containers'
+import { connect } from 'cloudflare:sockets'
 import { env } from 'cloudflare:workers'
+import pRetry from 'p-retry'
 import { z } from 'zod'
 
-import { getMockContainerCtx, proxyContainerFetch, startContainer } from './containerHelpers'
+import { logger } from '../logger'
 
 import type { Env } from '../autofix.context'
 
@@ -19,20 +21,18 @@ const ExecResult = z.object({
 export class UserContainer extends Container<Env> {
 	defaultPort = OPEN_CONTAINER_PORT
 	sleepAfter = '5m'
-	// Enable manual start in development
-	manualStart = env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST' ? true : false
+	manualStart = isDevEnv()
 
 	constructor(
 		public ctx: DurableObjectState,
 		public env: Env
 	) {
-		if (env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST') {
+		if (isDevEnv()) {
 			ctx.container = getMockContainerCtx()
 		}
-		console.log('creating user container DO')
 		super(ctx, env)
 
-		if (env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST') {
+		if (isDevEnv()) {
 			this.alarm = async () => {}
 		}
 	}
@@ -40,7 +40,6 @@ export class UserContainer extends Container<Env> {
 	async initialize(): Promise<void> {
 		await startContainer({
 			container: this,
-			environment: this.env.ENVIRONMENT,
 			port: OPEN_CONTAINER_PORT,
 		})
 	}
@@ -48,7 +47,6 @@ export class UserContainer extends Container<Env> {
 	private async proxyFetch(request: Request) {
 		const resp = await proxyContainerFetch({
 			container: this,
-			environment: this.env.ENVIRONMENT,
 			request,
 		})
 		if (!resp.ok) {
@@ -105,4 +103,62 @@ export class UserContainer extends Container<Env> {
 			})
 		)
 	}
+}
+
+const isDevEnv = () => env.ENVIRONMENT === 'development' || env.ENVIRONMENT === 'VITEST'
+
+export function getMockContainerCtx() {
+	// mock ctx.container methods in development
+	return {
+		running: true,
+		monitor: (): Promise<void> => {
+			// never resolves
+			return new Promise(() => {})
+		},
+		start: () => {},
+		getTcpPort(_port: number) {
+			return { fetch, connect }
+		},
+		signal: () => {},
+		destroy: () => {
+			return Promise.resolve()
+		},
+	}
+}
+
+export async function startContainer({
+	container,
+	port,
+}: {
+	container: Container<Env>
+	port: number
+}): Promise<void> {
+	if (isDevEnv()) {
+		logger.warn('Running in dev, assuming locally running container')
+		return
+	}
+
+	await pRetry(async () => container.startAndWaitForPorts(port), {
+		minTimeout: 200,
+		maxTimeout: 1000,
+		factor: 2,
+		retries: 3,
+	})
+}
+
+export async function proxyContainerFetch({
+	container,
+	request,
+}: {
+	container: Container<Env>
+	request: Request
+}): Promise<Response> {
+	if (isDevEnv()) {
+		const url = request.url
+			.replace('https://', 'http://')
+			.replace('http://host', 'http://localhost')
+		return fetch(url, request)
+	}
+
+	return await container.containerFetch(request)
 }
