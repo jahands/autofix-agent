@@ -54,26 +54,4 @@ const app = new Hono<App>()
 		}
 	)
 
-	// Heartbeat the agent
-	.post(
-		'/api/agents/:agentId/ping',
-		sValidator('param', z.object({ agentId: z.string() })),
-		async (c) => {
-			const { agent } = getAgent(c.env, c.req.valid('param'))
-			const res = await agent.pingContainer()
-			return c.json(res)
-		}
-	)
-
-	// List files
-	.get(
-		'/api/agents/:agentId/files',
-		sValidator('param', z.object({ agentId: z.string() })),
-		async (c) => {
-			const { agent } = getAgent(c.env, c.req.valid('param'))
-			const res = await agent.listContainerFiles()
-			return c.json(res)
-		}
-	)
-
 export default app

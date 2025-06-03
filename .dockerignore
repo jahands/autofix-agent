@@ -9,5 +9,4 @@
 **/.turbo
 **/.wrangler
 **/Dockerfile
-**/dist
 **/node_modules
