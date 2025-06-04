@@ -456,6 +456,9 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- This is a Workers project, not a Pages project - all deployment must use Workers commands
 			- DO NOT modify existing build scripts in package.json unless absolutely necessary
 			- DO NOT add "engines" fields to package.json unless the build explicitly fails due to Node.js version incompatibility
+			- DO NOT add unnecessary flags to wrangler commands in package.json scripts - configuration should be in wrangler.jsonc
+			- When updating scripts from 'wrangler pages dev' to 'wrangler dev', use simple commands without redundant flags
+			- Example: "wrangler pages dev" → "wrangler dev" (NOT "wrangler dev ./dist/_worker.js --local --assets ./dist")
 			- Focus on the actual build failure, not on potential improvements or optimizations
 			- Only make changes that are directly required to fix the specific build error
 			- CRITICAL: For static assets, use Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
@@ -482,6 +485,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- CRITICAL MIGRATION RULE: Migrate FROM Pages TO Workers - use 'wrangler deploy', NEVER 'wrangler pages deploy'
 			- This migration is FROM Pages TO Workers, not the other way around
 			- Any build scripts that use 'wrangler pages deploy' must be changed to 'wrangler deploy'
+			- Change 'wrangler pages dev' to 'wrangler dev' in preview/dev scripts (without adding unnecessary flags)
+			- DO NOT add redundant command-line flags that duplicate wrangler.jsonc configuration
 			- Migrate functions/ directory (Pages Functions) to standard Worker script patterns
 			- Update any Pages-specific build configurations to Workers equivalents
 			- CRITICAL: Migrate Pages wrangler configuration to Workers Assets format (NOT Workers Sites):
@@ -520,7 +525,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				- If you find any build scripts using 'wrangler pages deploy', change them to 'wrangler deploy'
 				- This is a Workers project, not a Pages project - all deployment must use Workers commands
 
-			Note:
+			Notes:
 				- The target deployment platform is Cloudflare Workers (with static assets support)
 				- Use the search_cloudflare_documentation tool to find docs for Workers deployment${isPages ? ' and Pages-to-Workers migration' : ''} when proposing changes
 				- Prefer wrangler.jsonc over wrangler.toml for configuration files (jsonc supports comments for better documentation)
@@ -528,6 +533,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				- JSONC files (.jsonc) support JavaScript-style comments (// single-line and /* multi-line */) for documentation
 				- When working with wrangler.jsonc, you can add explanatory comments to help developers understand configuration
 				- CRITICAL: Only add service bindings (KV, D1, R2, etc.) when the code explicitly uses them and build fails due to missing bindings
+				- DO NOT add redundant command-line flags to wrangler commands in package.json - configuration belongs in wrangler.jsonc
+				- Keep package.json scripts simple: use "wrangler dev" and "wrangler deploy" without unnecessary flags
 				- Framework log messages (especially from Astro) about sessions or storage are informational - they don't require adding bindings
 				- CRITICAL _worker.js HANDLING: If you encounter the error "Uploading a Pages _worker.js directory as an asset", create a .assetsignore file containing "_worker.js" and copy it to the assets output directory during build
 				- Always check for _worker.js files in build outputs and handle them appropriately to prevent security issues
