@@ -284,14 +284,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			installDependencies: tool({
 				description: fmt.trim(`
 					Install project dependencies using the appropriate package manager.
-					Detects and uses the correct package manager based on lock files:
-					- npm (package-lock.json)
-					- yarn (yarn.lock)
-					- pnpm (pnpm-lock.yaml)
-					- bun (bun.lockb)
-
-					Example:
-					installCommand: "npm install" or "yarn install" or "pnpm install" or "bun install"
+					Use the correct package manager based on lock files (npm, yarn, pnpm, or bun).
 
 					Returns success status and any error details if the command fails.
 				`),
@@ -316,14 +309,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			buildProject: tool({
 				description: fmt.trim(`
 					Builds the project using the specified command.
-					IMPORTANT: Dependencies should be installed first using the installDependencies tool.
-					If a package.json exists with a build script, it will be used.
-					The command must always include 'npx wrangler build' to ensure proper Workers deployment.
-					CRITICAL: NEVER use 'wrangler pages deploy' or any Pages-specific deployment commands.
-					This project will be deployed as a Cloudflare Worker, so use 'wrangler deploy' for deployment.
-
-					Example:
-					buildCommand: "npm run build && npx wrangler build"
+					Dependencies should be installed first using the installDependencies tool.
 
 					Returns success status and any error details if the build fails.
 				`),
@@ -475,6 +461,9 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- CRITICAL: For static assets, use Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
 			- NEVER use the deprecated Workers Sites format: [site] bucket = "path" (this is outdated and unsupported)
 			- IMPORTANT: If a wrangler.toml file exists, migrate it to wrangler.jsonc format for better maintainability
+			- CRITICAL ASSETS HANDLING: If the build output contains a _worker.js file (common in Pages projects), create a .assetsignore file containing "_worker.js" to prevent uploading server-side code as a static asset
+			- The .assetsignore file should be created in the project root and copied to the assets output directory during the build process
+			- Update build commands to include copying .assetsignore to the output directory before running 'wrangler deploy'
 
 			CRITICAL BINDING MANAGEMENT RULES:
 			- DO NOT add KV namespace, D1 database, R2 bucket, or other service bindings to wrangler.jsonc unless the build explicitly fails due to missing bindings
@@ -507,6 +496,11 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- Remove Pages-specific configurations that don't apply to Workers
 			- CRITICAL: During migration, do NOT add service bindings (KV, D1, R2) unless the code explicitly requires them
 			- Pages projects may have had implicit bindings - only migrate bindings that are actually used in the code
+			- CRITICAL _worker.js HANDLING: Pages projects often generate _worker.js files in the build output
+				* Create a .assetsignore file in the project root containing "_worker.js" to prevent uploading server-side code as static assets
+				* Update build scripts to copy .assetsignore to the assets output directory before deployment
+				* Example build command: "npm run build && cp .assetsignore ./dist/ && wrangler deploy"
+				* This prevents the error: "Uploading a Pages _worker.js directory as an asset"
 			- DEPLOYMENT: Always use 'wrangler deploy' for the final deployment, never Pages commands
 			- Reference both Pages migration docs and Workers static assets docs
 		`)
@@ -535,6 +529,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				- When working with wrangler.jsonc, you can add explanatory comments to help developers understand configuration
 				- CRITICAL: Only add service bindings (KV, D1, R2, etc.) when the code explicitly uses them and build fails due to missing bindings
 				- Framework log messages (especially from Astro) about sessions or storage are informational - they don't require adding bindings
+				- CRITICAL _worker.js HANDLING: If you encounter the error "Uploading a Pages _worker.js directory as an asset", create a .assetsignore file containing "_worker.js" and copy it to the assets output directory during build
+				- Always check for _worker.js files in build outputs and handle them appropriately to prevent security issues
 				${isPages ? '- If migrating from Pages, explain the equivalent Workers patterns for any Pages-specific features' : ''}
 				${isPages ? '- Remember: this is a migration FROM Pages TO Workers, so use Workers deployment commands' : ''}
 
@@ -556,7 +552,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			model: GoogleModels.GeminiPro(),
 			maxTokens: 50_000,
 			maxSteps: 20,
-			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}. You understand that wrangler.jsonc files support JavaScript-style comments and you NEVER add service bindings (KV, D1, R2, etc.) unless the code explicitly uses them and the build fails due to missing bindings. Framework log messages about sessions or storage are informational and do not require binding configuration.`,
+			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}. You understand that wrangler.jsonc files support JavaScript-style comments and you NEVER add service bindings (KV, D1, R2, etc.) unless the code explicitly uses them and the build fails due to missing bindings. Framework log messages about sessions or storage are informational and do not require binding configuration. When you see errors about "_worker.js directory as an asset", create a .assetsignore file containing "_worker.js" and copy it to the output directory during build.`,
 			prompt: workersPrompt,
 			onStepFinish: async ({ toolCalls }) => {
 				this.logger.log(
