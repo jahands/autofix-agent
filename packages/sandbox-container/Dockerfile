@@ -1,10 +1,15 @@
-FROM ubuntu:24.04 as base
+FROM ubuntu:24.04 AS base
 
 RUN apt-get update && apt-get install -y \
 	git \
 	curl \
 	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
+
+# Add Cloudflare WARP certs when USE_WARP_CERTS == 'true' (local development only)
+ARG USE_WARP_CERTS
+COPY packages/sandbox-container/src/install-scripts/install-cloudflare-warp-certs.sh /tmp/
+RUN /tmp/install-cloudflare-warp-certs.sh && rm /tmp/install-cloudflare-warp-certs.sh
 
 RUN useradd --system --create-home --uid 1001 sandbox
 USER sandbox

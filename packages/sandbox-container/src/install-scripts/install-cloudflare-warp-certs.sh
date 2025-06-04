@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-if [[ "$ENVIRONMENT" != "development" ]]; then
+if [[ "$USE_WARP_CERTS" != "true" ]]; then
 	# This is only needed for development
+	echo "Skipping Cloudflare WARP certs installation"
 	exit 0
 fi
 
@@ -429,11 +430,6 @@ report_errored() {
 ################################################################################
 # main program
 ################################################################################
-
-# Don't run script if NODE_EXTRA_CA_CERTS is not provided
-if [ -z "$NODE_EXTRA_CA_CERTS" ]; then
-	exit 0
-fi
 
 install_required_deps
 
