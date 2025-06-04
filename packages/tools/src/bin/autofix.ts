@@ -3,7 +3,7 @@ import 'zx/globals'
 import { program } from '@commander-js/extra-typings'
 import { catchProcessError } from '@jahands/cli-tools/proc'
 
-import { autofixBuildCmd, autofixTailCmd } from '../cmd/autofix.cmd'
+import { autofixBuildCmd, autofixFixBuildCmd, autofixTailCmd } from '../cmd/autofix.cmd'
 
 program
 	.name('autofix')
@@ -11,6 +11,7 @@ program
 
 	.addCommand(autofixTailCmd)
 	.addCommand(autofixBuildCmd)
+	.addCommand(autofixFixBuildCmd)
 
 	// Don't hang for unresolved promises
 	.hook('postAction', () => process.exit(0))
