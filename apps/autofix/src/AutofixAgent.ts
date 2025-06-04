@@ -319,6 +319,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 					IMPORTANT: Dependencies should be installed first using the installDependencies tool.
 					If a package.json exists with a build script, it will be used.
 					The command must always include 'npx wrangler build' to ensure proper Workers deployment.
+					CRITICAL: NEVER use 'wrangler pages deploy' or any Pages-specific deployment commands.
+					This project will be deployed as a Cloudflare Worker, so use 'wrangler deploy' for deployment.
 
 					Example:
 					buildCommand: "npm run build && npx wrangler build"
@@ -463,6 +465,9 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
 			- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
 			- The command must always include 'npx wrangler build' to ensure proper Workers deployment
+			- CRITICAL DEPLOYMENT RULE: Use 'wrangler deploy' for deployment, NEVER 'wrangler pages deploy'
+			- NEVER suggest or use any Pages-specific deployment commands (wrangler pages deploy, etc.)
+			- This is a Workers project, not a Pages project - all deployment must use Workers commands
 			- DO NOT modify existing build scripts in package.json unless absolutely necessary
 			- DO NOT add "engines" fields to package.json unless the build explicitly fails due to Node.js version incompatibility
 			- Focus on the actual build failure, not on potential improvements or optimizations
@@ -475,6 +480,9 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		const migrationGuidelines = isPages
 			? fmt.trim(`
 			- IMPORTANT: This project appears to have Cloudflare Pages-specific configurations that need migration
+			- CRITICAL MIGRATION RULE: Migrate FROM Pages TO Workers - use 'wrangler deploy', NEVER 'wrangler pages deploy'
+			- This migration is FROM Pages TO Workers, not the other way around
+			- Any build scripts that use 'wrangler pages deploy' must be changed to 'wrangler deploy'
 			- Migrate functions/ directory (Pages Functions) to standard Worker script patterns
 			- Update any Pages-specific build configurations to Workers equivalents
 			- CRITICAL: Migrate Pages wrangler configuration to Workers Assets format (NOT Workers Sites):
@@ -487,6 +495,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- Ensure static assets are properly configured for Workers static assets hosting
 			- NOTE: _headers and _redirects files are supported in Workers Assets and can remain as-is
 			- Remove Pages-specific configurations that don't apply to Workers
+			- DEPLOYMENT: Always use 'wrangler deploy' for the final deployment, never Pages commands
 			- Reference both Pages migration docs and Workers static assets docs
 		`)
 			: ''
@@ -499,12 +508,19 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				${baseGuidelines}
 				${migrationGuidelines}
 
+			CRITICAL DEPLOYMENT INSTRUCTIONS:
+				- This project will be deployed using 'wrangler deploy' command
+				- NEVER use 'wrangler pages deploy' or any Pages-specific deployment commands
+				- If you find any build scripts using 'wrangler pages deploy', change them to 'wrangler deploy'
+				- This is a Workers project, not a Pages project - all deployment must use Workers commands
+
 			Note:
 				- The target deployment platform is Cloudflare Workers (with static assets support)
 				- Use the search_cloudflare_documentation tool to find docs for Workers deployment${isPages ? ' and Pages-to-Workers migration' : ''} when proposing changes
 				- Prefer json over toml for configuration files
 				- Workers projects should have a wrangler.toml or wrangler.json configuration file
 				${isPages ? '- If migrating from Pages, explain the equivalent Workers patterns for any Pages-specific features' : ''}
+				${isPages ? '- Remember: this is a migration FROM Pages TO Workers, so use Workers deployment commands' : ''}
 
 			Final output should contain these 3 sections. Formatted nicely for a Pull Request:
 				- describe the project and why it failed to deploy${isPages ? ' (mention if Pages migration was needed)' : ''}
