@@ -1,6 +1,7 @@
 import { Command } from '@commander-js/extra-typings'
-import { validateArg } from '@jahands/cli-tools'
+import { cliError, validateArg } from '@jahands/cli-tools'
 import * as jsoncParser from 'jsonc-parser'
+import { match } from 'ts-pattern'
 import { z } from 'zod/v4'
 
 import { getRepoRoot } from '../path'
@@ -184,4 +185,53 @@ export const autofixBuildCmd = new Command('build-container')
 
 		await fs.writeFile(wranglerPath, updatedContent)
 		echo(chalk.green(`\nUpdated wrangler.jsonc with new image: ${registryImage}`))
+	})
+
+export const autofixFixBuildCmd = new Command('fix-build')
+	.description(
+		'Trigger autofix for a given build UUID. This will run the autofix agent on the build.'
+	)
+	.argument('<buildUUID>', 'Build UUID to trigger autofix for')
+	.option(
+		'-e, --env <environment>',
+		'Environment to trigger autofix in',
+		validateArg(z.enum(['local', 'staging', 'production'])),
+		'local'
+	)
+	.action(async (buildUUID, { env }) => {
+		const apiUrl = match(env)
+			.with('local', () => 'http://localhost:8787')
+			.with('staging', () => 'https://autofix-staging.mcp.cloudflare.com')
+			.with('production', () => {
+				// TODO: Update with production URL when available
+				throw new Error('Production environment not yet configured')
+			})
+			.exhaustive()
+
+		const url = `${apiUrl}/api/agents/${buildUUID}`
+
+		echo(chalk.blue(`Triggering autofix for build ${buildUUID} in ${env} environment...`))
+		echo(chalk.grey(`POST ${url}`))
+
+		try {
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			})
+
+			if (!response.ok) {
+				const errorText = await response.text()
+				throw new Error(`HTTP ${response.status}: ${errorText}`)
+			}
+
+			const result = await response.json()
+			echo(chalk.green(`✅ Autofix triggered successfully!`))
+			console.log(JSON.stringify(result, null, 2))
+		} catch (err) {
+			throw cliError(
+				`❌ Failed to trigger autofix: ${err instanceof Error ? err.message : String(err)}`
+			)
+		}
 	})
