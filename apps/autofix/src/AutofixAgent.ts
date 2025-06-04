@@ -475,6 +475,16 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- CRITICAL: For static assets, use Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
 			- NEVER use the deprecated Workers Sites format: [site] bucket = "path" (this is outdated and unsupported)
 			- IMPORTANT: If a wrangler.toml file exists, migrate it to wrangler.jsonc format for better maintainability
+
+			CRITICAL BINDING MANAGEMENT RULES:
+			- DO NOT add KV namespace, D1 database, R2 bucket, or other service bindings to wrangler.jsonc unless the build explicitly fails due to missing bindings
+			- NEVER add placeholder binding IDs (like "preview_id": "placeholder" or "id": "your-kv-namespace-id") as these create invalid configurations
+			- Astro projects may log session-related messages mentioning KV stores - these are informational and do NOT require adding KV bindings
+			- Only add bindings when there are explicit import/usage errors in the code that reference undefined binding variables
+			- If you must add a binding, use proper resource names and leave ID fields empty with comments explaining they need to be configured
+			- Remember: wrangler.jsonc files support JavaScript-style comments (// and /* */) for documentation
+			- Bindings should only be added if the code explicitly imports or uses them (e.g., env.MY_KV_NAMESPACE, platform.env.DATABASE)
+			- Log messages about sessions, caching, or storage are usually framework-level and don't require binding configuration
 		`)
 
 		const migrationGuidelines = isPages
@@ -495,6 +505,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- Ensure static assets are properly configured for Workers static assets hosting
 			- NOTE: _headers and _redirects files are supported in Workers Assets and can remain as-is
 			- Remove Pages-specific configurations that don't apply to Workers
+			- CRITICAL: During migration, do NOT add service bindings (KV, D1, R2) unless the code explicitly requires them
+			- Pages projects may have had implicit bindings - only migrate bindings that are actually used in the code
 			- DEPLOYMENT: Always use 'wrangler deploy' for the final deployment, never Pages commands
 			- Reference both Pages migration docs and Workers static assets docs
 		`)
@@ -517,8 +529,12 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			Note:
 				- The target deployment platform is Cloudflare Workers (with static assets support)
 				- Use the search_cloudflare_documentation tool to find docs for Workers deployment${isPages ? ' and Pages-to-Workers migration' : ''} when proposing changes
-				- Prefer json over toml for configuration files
-				- Workers projects should have a wrangler.toml or wrangler.json configuration file
+				- Prefer wrangler.jsonc over wrangler.toml for configuration files (jsonc supports comments for better documentation)
+				- Workers projects should have a wrangler.toml, wrangler.json, or wrangler.jsonc configuration file
+				- JSONC files (.jsonc) support JavaScript-style comments (// single-line and /* multi-line */) for documentation
+				- When working with wrangler.jsonc, you can add explanatory comments to help developers understand configuration
+				- CRITICAL: Only add service bindings (KV, D1, R2, etc.) when the code explicitly uses them and build fails due to missing bindings
+				- Framework log messages (especially from Astro) about sessions or storage are informational - they don't require adding bindings
 				${isPages ? '- If migrating from Pages, explain the equivalent Workers patterns for any Pages-specific features' : ''}
 				${isPages ? '- Remember: this is a migration FROM Pages TO Workers, so use Workers deployment commands' : ''}
 
@@ -540,7 +556,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			model: GoogleModels.GeminiPro(),
 			maxTokens: 50_000,
 			maxSteps: 20,
-			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}`,
+			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}. You understand that wrangler.jsonc files support JavaScript-style comments and you NEVER add service bindings (KV, D1, R2, etc.) unless the code explicitly uses them and the build fails due to missing bindings. Framework log messages about sessions or storage are informational and do not require binding configuration.`,
 			prompt: workersPrompt,
 			onStepFinish: async ({ toolCalls }) => {
 				this.logger.log(
