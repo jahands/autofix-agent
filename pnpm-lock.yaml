@@ -80,6 +80,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/sandbox-container':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-container
       agents:
         specifier: 0.0.87
         version: 0.0.87(@cloudflare/workers-types@4.20250519.0)(react@19.1.0)

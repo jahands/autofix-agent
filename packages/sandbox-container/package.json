@@ -6,9 +6,10 @@
 	"type": "module",
 	"main": "src/index.ts",
 	"scripts": {
+		"build": "esbuild src/index.ts --bundle --outfile=dist/sandbox-server.cjs --platform=node",
 		"check:lint": "run-eslint-default",
 		"check:types": "run-tsc",
-		"esbuild": "esbuild src/index.ts --bundle --outfile=dist/sandbox-server.cjs --platform=node",
+		"dev": "docker compose up",
 		"test": "run-vitest"
 	},
 	"dependencies": {
