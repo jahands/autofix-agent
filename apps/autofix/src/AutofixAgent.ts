@@ -46,6 +46,7 @@ type AgentState =
 			status: 'running'
 			config: Config
 			currentAction: AgentAction
+			fixIssuesAnalysis?: string // TODO let's find a cleaner place for this when we tackle storing the "history" of actions the agent performs
 	  }
 	| {
 			status: 'stopped'
@@ -352,6 +353,14 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		logger.info(`[AutofixAgent] generateText response`)
 		console.log(res.text) // easier to read this way
 
+		if (this.state.status !== 'running') {
+			throw new Error(`Expected Agent to be running but got: ${this.state.status}`)
+		}
+		this.setState({
+			...this.state,
+			fixIssuesAnalysis: res.text,
+		})
+
 		this.logger.info('[AutofixAgent] Issue fixing complete.')
 	}
 
@@ -619,12 +628,17 @@ class AutofixAgent extends Agent<Env, AgentState> {
 	}
 
 	async handleCreatePr(): Promise<void> {
+		if (this.state.status !== 'running') {
+			throw new Error(`Expected Agent to be running but got: ${this.state.status}`)
+		}
+
 		const res = await new GitHubClient(this.env.DEMO_GITHUB_TOKEN).createPullRequest({
 			base: this.state.config.gitConfig.branch,
 			title: '[Autofix] Your fixed changes!',
 			owner: this.state.config.gitConfig.owner,
 			repo: this.state.config.gitConfig.repo,
 			head: this.getAutofixBranch(),
+			body: this.state.fixIssuesAnalysis,
 		})
 		this.logger.info('[AutofixAgent] PR created.')
 		this.logger.info(`[AutofixAgent] PR URL -> ${res.url}`)
