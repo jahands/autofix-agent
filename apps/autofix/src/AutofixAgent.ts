@@ -382,9 +382,10 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- Wrangler config with "pages_build_output_dir" (should migrate to Workers Assets format)
 			- Error: "It looks like you've run a Workers-specific command in a Pages project"
 			- References to "wrangler pages deploy" instead of "wrangler deploy"
-			- functions/ directory (Pages Functions - need migration to Worker patterns)
+			- functions/ directory (Pages Functions - requires compilation with 'wrangler pages functions build')
 			- Build errors specifically mentioning Pages deployment patterns
 			- Configuration showing Pages-specific build outputs
+			- Error messages about functions/ folder deployment or Pages Functions routing
 
 			**Note: _headers and _redirects files are supported in Workers Assets and do NOT require migration**
 
@@ -467,6 +468,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- CRITICAL ASSETS HANDLING: If the build output contains a _worker.js file (common in Pages projects), create a .assetsignore file containing "_worker.js" to prevent uploading server-side code as a static asset
 			- The .assetsignore file should be created in the project root and copied to the assets output directory during the build process
 			- Update build commands to include copying .assetsignore to the output directory before running 'wrangler deploy'
+			- CRITICAL functions/ DIRECTORY: If a functions/ directory exists, integrate 'wrangler pages functions build --outdir=./dist/worker/' into package.json build scripts
+			- Functions compilation must happen after static asset building but before deployment
 
 			CRITICAL BINDING MANAGEMENT RULES:
 			- DO NOT add KV namespace, D1 database, R2 bucket, or other service bindings to wrangler.jsonc unless the build explicitly fails due to missing bindings
@@ -487,7 +490,20 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			- Any build scripts that use 'wrangler pages deploy' must be changed to 'wrangler deploy'
 			- Change 'wrangler pages dev' to 'wrangler dev' in preview/dev scripts (without adding unnecessary flags)
 			- DO NOT add redundant command-line flags that duplicate wrangler.jsonc configuration
-			- Migrate functions/ directory (Pages Functions) to standard Worker script patterns
+			- CRITICAL functions/ DIRECTORY MIGRATION: If the project has a functions/ directory (Pages Functions):
+				* Update package.json build script to include: 'wrangler pages functions build --outdir=./dist/worker/'
+				* Update wrangler.jsonc main field to point to the compiled script: "main": "./dist/worker/index.js"
+				* The compiled Worker script will handle all the routing that was previously done by the functions/ folder
+				* Example package.json script update:
+					- Before: "build": "npm run build:client"
+					- After: "build": "npm run build:client && wrangler pages functions build --outdir=./dist/worker/"
+				* Example wrangler.jsonc configuration:
+					{
+						"name": "my-worker",
+						"main": "./dist/worker/index.js",
+						"assets": {"directory": "./dist/client/"}
+					}
+				* The functions compilation must happen BEFORE 'wrangler deploy' in the deployment process
 			- Update any Pages-specific build configurations to Workers equivalents
 			- CRITICAL: Migrate Pages wrangler configuration to Workers Assets format (NOT Workers Sites):
 				* Replace "pages_build_output_dir" with "assets": {"directory": "path"}
@@ -538,6 +554,8 @@ class AutofixAgent extends Agent<Env, AgentState> {
 				- Framework log messages (especially from Astro) about sessions or storage are informational - they don't require adding bindings
 				- CRITICAL _worker.js HANDLING: If you encounter the error "Uploading a Pages _worker.js directory as an asset", create a .assetsignore file containing "_worker.js" and copy it to the assets output directory during build
 				- Always check for _worker.js files in build outputs and handle them appropriately to prevent security issues
+				- CRITICAL functions/ DIRECTORY HANDLING: If you detect a functions/ directory, update package.json build scripts to include 'wrangler pages functions build --outdir=./dist/worker/' and update wrangler.jsonc main field to point to the compiled script
+				- Functions compilation must be integrated into the build process, not run as a separate step
 				${isPages ? '- If migrating from Pages, explain the equivalent Workers patterns for any Pages-specific features' : ''}
 				${isPages ? '- Remember: this is a migration FROM Pages TO Workers, so use Workers deployment commands' : ''}
 
@@ -559,7 +577,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			model: GoogleModels.GeminiPro(),
 			maxTokens: 50_000,
 			maxSteps: 20,
-			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}. You understand that wrangler.jsonc files support JavaScript-style comments and you NEVER add service bindings (KV, D1, R2, etc.) unless the code explicitly uses them and the build fails due to missing bindings. Framework log messages about sessions or storage are informational and do not require binding configuration. When you see errors about "_worker.js directory as an asset", create a .assetsignore file containing "_worker.js" and copy it to the output directory during build.`,
+			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}.`,
 			prompt: workersPrompt,
 			onStepFinish: async ({ toolCalls }) => {
 				this.logger.log(
