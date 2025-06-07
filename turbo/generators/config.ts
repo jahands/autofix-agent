@@ -50,10 +50,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 					type: 'addMany',
 					base: 'templates/fetch-worker',
 					destination,
-					templateFiles: [
-						'templates/fetch-worker/**/**.hbs',
-						'templates/fetch-worker/.eslintrc.cjs.hbs',
-					],
+					templateFiles: ['templates/fetch-worker/**/**.hbs'],
 					data: answers,
 				},
 				{
@@ -93,10 +90,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 					type: 'addMany',
 					base: 'templates/fetch-worker-vite',
 					destination,
-					templateFiles: [
-						'templates/fetch-worker-vite/**/**.hbs',
-						'templates/fetch-worker-vite/.eslintrc.cjs.hbs',
-					],
+					templateFiles: ['templates/fetch-worker-vite/**/**.hbs'],
 					data: answers,
 				},
 				{
@@ -141,7 +135,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
 					type: 'addMany',
 					base: 'templates/package',
 					destination,
-					templateFiles: ['templates/package/**/**.hbs', 'templates/package/.eslintrc.cjs.hbs'],
+					templateFiles: ['templates/package/**/**.hbs'],
 					data: {
 						...answers,
 						tsconfigType: answers.usedInWorkers ? 'workers-lib.json' : 'lib.json',
