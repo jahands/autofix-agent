@@ -9,6 +9,7 @@ import * as importPlugin from 'eslint-plugin-import'
 import unusedImportsPlugin from 'eslint-plugin-unused-imports'
 import { defineConfig } from 'eslint/config'
 import tseslint from 'typescript-eslint'
+
 import { getDirname, getGitIgnoreFiles, getTsconfigRootDir } from './helpers'
 
 export { defineConfig }
