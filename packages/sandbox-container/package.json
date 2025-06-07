@@ -7,7 +7,7 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"build": "esbuild src/index.ts --bundle --outfile=dist/sandbox-server.cjs --platform=node",
-		"check:lint": "run-eslint-default",
+		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
 		"dev": "docker compose up",
 		"test": "run-vitest"
