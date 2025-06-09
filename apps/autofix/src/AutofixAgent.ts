@@ -7,11 +7,16 @@ import { logger } from './logger'
 
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
-import { WorkersBuildsClient } from './workersBuilds'
+import { WorkersBuildsClient, type BuildResponse } from './workersBuilds'
 import { experimental_createMCPClient, tool, generateText } from 'ai'
 import { GoogleModels } from './ai-models'
 import { fmt } from './format'
 import { GitHubClient } from './github'
+import { createDetectionSystemPrompt, createDetectionUserPrompt } from './prompts/pages.prompt'
+import {
+	createFixGenerationSystemPrompt,
+	createFixGenerationUserPrompt,
+} from './prompts/workers.prompt'
 
 const AgentActions = {
 	initialize_container: { description: 'Initialize the container for the repository.' },
@@ -55,7 +60,6 @@ type AgentState =
 			outcome: { type: 'success' } | { type: 'error'; error: unknown }
 	  }
 
-type BuildMetadata = Awaited<ReturnType<WorkersBuildsClient['getBuildMetadata']>>
 type ToolFunction = {
 	description?: string
 	parameters: z3.ZodSchema
@@ -366,82 +370,35 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	private async detectIsPages(
 		tools: DetectionTools,
-		metadata: BuildMetadata,
+		metadata: BuildResponse,
 		logs: string
 	): Promise<boolean> {
-		const detectionPrompt = fmt.trim(`
-			You are analyzing a project to determine if it has Cloudflare Pages-specific configurations that need to be migrated to Cloudflare Workers equivalents.
-
-			Since Cloudflare Workers now supports static assets hosting, all projects will be deployed as Workers, but projects originally designed for Pages may need configuration migration.
-
-			**Analysis Strategy:**
-			1. **First, analyze the provided build logs and metadata** for specific Cloudflare Pages indicators:
-				- Error messages like "It looks like you've run a Workers-specific command in a Pages project"
-				- References to "wrangler pages deploy" or "pages deploy"
-				- Mentions of "pages_build_output_dir" in configuration or errors
-				- Specific Pages error messages about "functions/" deployment or Pages Functions
-				- Build configuration explicitly showing Pages-specific settings
-
-			2. **Only use file analysis tools if the logs/metadata are inconclusive** and you need to examine:
-				- Wrangler configuration files (wrangler.toml, wrangler.json, wrangler.jsonc) for "pages_build_output_dir"
-				- Project root for functions/ directory (Pages Functions)
-				- Package.json and build scripts for Pages-specific patterns
-
-			**Specific Cloudflare Pages Indicators to Look For:**
-			- Wrangler config with "pages_build_output_dir" (should migrate to Workers Assets format)
-			- Error: "It looks like you've run a Workers-specific command in a Pages project"
-			- References to "wrangler pages deploy" instead of "wrangler deploy"
-			- functions/ directory (Pages Functions - requires compilation with 'wrangler pages functions build')
-			- Build errors specifically mentioning Pages deployment patterns
-			- Configuration showing Pages-specific build outputs
-			- Error messages about functions/ folder deployment or Pages Functions routing
-
-			**Note: _headers and _redirects files are supported in Workers Assets and do NOT require migration**
-
-			**Instructions:**
-			- Start by carefully analyzing the build logs and metadata below
-			- Look for SPECIFIC Cloudflare Pages-related errors and configuration, not just the word "Pages"
-			- If you find clear evidence of Cloudflare Pages usage, you can conclude without file analysis
-			- Only use tools like listContainerFiles() and getFileContents() if you need additional information
-			- Be efficient - don't list files unnecessarily
-
-			After your analysis, respond with ONLY a valid JSON object in this exact format:
-			{
-				"needsMigration": boolean,
-				"reasoning": "Brief explanation of why migration is or is not needed based on specific evidence found"
-			}
-
-			Build configuration:
-			${JSON.stringify(metadata, null, 2)}
-
-			Build logs:
-			${logs}
-		`)
+		const systemPrompt = createDetectionSystemPrompt()
+		const userPrompt = createDetectionUserPrompt({ metadata, logs })
 
 		const res = await generateText({
 			model: GoogleModels.GeminiPro(),
 			maxTokens: 20_000,
 			maxSteps: 10,
-			system:
-				'You are an expert at identifying Cloudflare Pages configurations that need migration to Workers. Respond only with valid JSON.',
-			prompt: detectionPrompt,
+			system: systemPrompt,
+			prompt: userPrompt,
 			tools,
 		})
 
 		try {
-			const IsPagesResult = z3.object({
+			const DetectionResult = z3.object({
 				needsMigration: z3.boolean(),
 				reasoning: z3.string(),
 			})
 
 			// sometimes the LLM adds backticks around the JSON and I can't get it to stop :shrug:
 			const resText = res.text.replace(/^```json\n|```$/g, '')
-			const parsed = IsPagesResult.parse(JSON.parse(resText))
+			const parsed = DetectionResult.parse(JSON.parse(resText))
 			this.logger.info(`[AutofixAgent] Migration analysis: ${parsed.reasoning}`)
 			return parsed.needsMigration
-		} catch (error) {
+		} catch (e) {
 			this.logger.warn(
-				`[AutofixAgent] Failed to parse migration detection response, defaulting to false: ${error}`
+				`[AutofixAgent] Failed to parse migration detection response, defaulting to false: ${e}`
 			)
 			return false
 		}
@@ -449,145 +406,27 @@ class AutofixAgent extends Agent<Env, AgentState> {
 
 	private async generateWorkersFix(
 		tools: DetectionTools,
-		metadata: BuildMetadata,
+		metadata: BuildResponse,
 		logs: string,
 		isPages: boolean
 	) {
-		const baseGuidelines = fmt.trim(`
-			- This project will be deployed as a Cloudflare Worker (with static assets support if needed)
-			- You have tools available to you, call them as many times as you need
-			- You MUST update the files to fix the issue
-			- IMPORTANT: Always install dependencies first using the installDependencies tool before attempting to build
-			- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
-			- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
-			- The command must always include 'npx wrangler build' to ensure proper Workers deployment
-			- CRITICAL DEPLOYMENT RULE: Use 'wrangler deploy' for deployment, NEVER 'wrangler pages deploy'
-			- NEVER suggest or use any Pages-specific deployment commands (wrangler pages deploy, etc.)
-			- This is a Workers project, not a Pages project - all deployment must use Workers commands
-			- DO NOT modify existing build scripts in package.json unless absolutely necessary
-			- DO NOT add "engines" fields to package.json unless the build explicitly fails due to Node.js version incompatibility
-			- DO NOT add unnecessary flags to wrangler commands in package.json scripts - configuration should be in wrangler.jsonc
-			- When updating scripts from 'wrangler pages dev' to 'wrangler dev', use simple commands without redundant flags
-			- Example: "wrangler pages dev" → "wrangler dev" (NOT "wrangler dev ./dist/_worker.js --local --assets ./dist")
-			- Focus on the actual build failure, not on potential improvements or optimizations
-			- Only make changes that are directly required to fix the specific build error
-			- CRITICAL: For static assets, use Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
-			- NEVER use the deprecated Workers Sites format: [site] bucket = "path" (this is outdated and unsupported)
-			- IMPORTANT: If a wrangler.toml file exists, migrate it to wrangler.jsonc format for better maintainability
-			- CRITICAL ASSETS HANDLING: If the build output contains a _worker.js file (common in Pages projects), create a .assetsignore file containing "_worker.js" to prevent uploading server-side code as a static asset
-			- The .assetsignore file should be created in the project root and copied to the assets output directory during the build process
-			- Update build commands to include copying .assetsignore to the output directory before running 'wrangler deploy'
-			- CRITICAL functions/ DIRECTORY: If a functions/ directory exists, integrate 'wrangler pages functions build --outdir=./dist/worker/' into package.json build scripts
-			- Functions compilation must happen after static asset building but before deployment
+		// Extract repo name from metadata for the prompt
+		const repoName = metadata.result.build_trigger_metadata.repo_name
 
-			CRITICAL BINDING MANAGEMENT RULES:
-			- DO NOT add KV namespace, D1 database, R2 bucket, or other service bindings to wrangler.jsonc unless the build explicitly fails due to missing bindings
-			- NEVER add placeholder binding IDs (like "preview_id": "placeholder" or "id": "your-kv-namespace-id") as these create invalid configurations
-			- Astro projects may log session-related messages mentioning KV stores - these are informational and do NOT require adding KV bindings
-			- Only add bindings when there are explicit import/usage errors in the code that reference undefined binding variables
-			- If you must add a binding, use proper resource names and leave ID fields empty with comments explaining they need to be configured
-			- Remember: wrangler.jsonc files support JavaScript-style comments (// and /* */) for documentation
-			- Bindings should only be added if the code explicitly imports or uses them (e.g., env.MY_KV_NAMESPACE, platform.env.DATABASE)
-			- Log messages about sessions, caching, or storage are usually framework-level and don't require binding configuration
-		`)
-
-		const migrationGuidelines = isPages
-			? fmt.trim(`
-			- IMPORTANT: This project appears to have Cloudflare Pages-specific configurations that need migration
-			- CRITICAL MIGRATION RULE: Migrate FROM Pages TO Workers - use 'wrangler deploy', NEVER 'wrangler pages deploy'
-			- This migration is FROM Pages TO Workers, not the other way around
-			- Any build scripts that use 'wrangler pages deploy' must be changed to 'wrangler deploy'
-			- Change 'wrangler pages dev' to 'wrangler dev' in preview/dev scripts (without adding unnecessary flags)
-			- DO NOT add redundant command-line flags that duplicate wrangler.jsonc configuration
-			- CRITICAL functions/ DIRECTORY MIGRATION: If the project has a functions/ directory (Pages Functions):
-				* Update package.json build script to include: 'wrangler pages functions build --outdir=./dist/worker/'
-				* Update wrangler.jsonc main field to point to the compiled script: "main": "./dist/worker/index.js"
-				* The compiled Worker script will handle all the routing that was previously done by the functions/ folder
-				* Example package.json script update:
-					- Before: "build": "npm run build:client"
-					- After: "build": "npm run build:client && wrangler pages functions build --outdir=./dist/worker/"
-				* Example wrangler.jsonc configuration:
-					{
-						"name": "my-worker",
-						"main": "./dist/worker/index.js",
-						"assets": {"directory": "./dist/client/"}
-					}
-				* The functions compilation must happen BEFORE 'wrangler deploy' in the deployment process
-			- Update any Pages-specific build configurations to Workers equivalents
-			- CRITICAL: Migrate Pages wrangler configuration to Workers Assets format (NOT Workers Sites):
-				* Replace "pages_build_output_dir" with "assets": {"directory": "path"}
-				* Example: pages_build_output_dir = "./build/client" → "assets": {"directory": "./build/client"}
-				* NEVER use the old Workers Sites format: [site] bucket = "path" (this is deprecated)
-				* ALWAYS use the new Workers Assets format: [assets] directory = "path" or "assets": {"directory": "path"}
-				* If using wrangler.toml, convert the entire configuration to wrangler.jsonc format
-				* Delete the old wrangler.toml file after creating the new wrangler.jsonc
-			- Ensure static assets are properly configured for Workers static assets hosting
-			- NOTE: _headers and _redirects files are supported in Workers Assets and can remain as-is
-			- Remove Pages-specific configurations that don't apply to Workers
-			- CRITICAL: During migration, do NOT add service bindings (KV, D1, R2) unless the code explicitly requires them
-			- Pages projects may have had implicit bindings - only migrate bindings that are actually used in the code
-			- CRITICAL _worker.js HANDLING: Pages projects often generate _worker.js files in the build output
-				* Create a .assetsignore file in the project root containing "_worker.js" to prevent uploading server-side code as static assets
-				* Update build scripts to copy .assetsignore to the assets output directory before deployment
-				* Example build command: "npm run build && cp .assetsignore ./dist/ && wrangler deploy"
-				* This prevents the error: "Uploading a Pages _worker.js directory as an asset"
-			- DEPLOYMENT: Always use 'wrangler deploy' for the final deployment, never Pages commands
-			- Reference both Pages migration docs and Workers static assets docs
-		`)
-			: ''
-
-		const workersPrompt = fmt.trim(`
-			Goal:
-				- Fix the build failure for this Cloudflare Workers project
-
-			Guidelines:
-				${baseGuidelines}
-				${migrationGuidelines}
-
-			CRITICAL DEPLOYMENT INSTRUCTIONS:
-				- This project will be deployed using 'wrangler deploy' command
-				- NEVER use 'wrangler pages deploy' or any Pages-specific deployment commands
-				- If you find any build scripts using 'wrangler pages deploy', change them to 'wrangler deploy'
-				- This is a Workers project, not a Pages project - all deployment must use Workers commands
-
-			Notes:
-				- The target deployment platform is Cloudflare Workers (with static assets support)
-				- Use the search_cloudflare_documentation tool to find docs for Workers deployment${isPages ? ' and Pages-to-Workers migration' : ''} when proposing changes
-				- Prefer wrangler.jsonc over wrangler.toml for configuration files (jsonc supports comments for better documentation)
-				- Workers projects should have a wrangler.toml, wrangler.json, or wrangler.jsonc configuration file
-				- JSONC files (.jsonc) support JavaScript-style comments (// single-line and /* multi-line */) for documentation
-				- When working with wrangler.jsonc, you can add explanatory comments to help developers understand configuration
-				- CRITICAL: Only add service bindings (KV, D1, R2, etc.) when the code explicitly uses them and build fails due to missing bindings
-				- DO NOT add redundant command-line flags to wrangler commands in package.json - configuration belongs in wrangler.jsonc
-				- Keep package.json scripts simple: use "wrangler dev" and "wrangler deploy" without unnecessary flags
-				- Framework log messages (especially from Astro) about sessions or storage are informational - they don't require adding bindings
-				- CRITICAL _worker.js HANDLING: If you encounter the error "Uploading a Pages _worker.js directory as an asset", create a .assetsignore file containing "_worker.js" and copy it to the assets output directory during build
-				- Always check for _worker.js files in build outputs and handle them appropriately to prevent security issues
-				- CRITICAL functions/ DIRECTORY HANDLING: If you detect a functions/ directory, update package.json build scripts to include 'wrangler pages functions build --outdir=./dist/worker/' and update wrangler.jsonc main field to point to the compiled script
-				- Functions compilation must be integrated into the build process, not run as a separate step
-				${isPages ? '- If migrating from Pages, explain the equivalent Workers patterns for any Pages-specific features' : ''}
-				${isPages ? '- Remember: this is a migration FROM Pages TO Workers, so use Workers deployment commands' : ''}
-
-			Final output should contain these 3 sections. Formatted nicely for a Pull Request:
-				- describe the project and why it failed to deploy${isPages ? ' (mention if Pages migration was needed)' : ''}
-				- describe the relevant Cloudflare Workers docs for deploying this type of project${isPages ? ' and any Pages migration steps' : ''}
-				- summarize the fix${isPages ? ' and migration changes' : ''}
-
-			Assume the worker shares the same name as the git repo.
-
-			Here is the build configuration:
-			${JSON.stringify(metadata, null, 2)}
-
-			Here are the full build logs:
-			${logs}
-		`)
+		const systemPrompt = createFixGenerationSystemPrompt(isPages)
+		const userPrompt = createFixGenerationUserPrompt({
+			metadata,
+			logs,
+			isPages,
+			repoName,
+		})
 
 		return generateText({
 			model: GoogleModels.GeminiPro(),
 			maxTokens: 50_000,
 			maxSteps: 20,
-			system: `You are an expert at debugging Cloudflare Workers deployment failures${isPages ? ' and migrating Pages projects to Workers' : ''}.`,
-			prompt: workersPrompt,
+			system: systemPrompt,
+			prompt: userPrompt,
 			onStepFinish: async ({ toolCalls }) => {
 				this.logger.log(
 					`[AutofixAgent] step finished. tools: ${JSON.stringify(toolCalls.map((call) => call.toolName))}`
