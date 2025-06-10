@@ -1,0 +1,31 @@
+{
+	"name": "@repo/eval-tools",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc"
+	},
+	"dependencies": {
+		"@ai-sdk/anthropic": "1.2.11",
+		"@ai-sdk/google": "1.2.18",
+		"@ai-sdk/openai": "1.3.22",
+		"@fast-csv/format": "5.0.2",
+		"@repo/format": "workspace:*",
+		"ai": "4.3.10",
+		"ai-gateway-provider": "0.0.6",
+		"vitest": "3.2.3",
+		"vitest-evals": "0.3.0",
+		"workers-ai-provider": "0.4.1",
+		"zod": "3.25.7"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.8.30",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@types/node": "22.15.27"
+	}
+}

@@ -1,0 +1,33 @@
+name: Evals
+
+on:
+  push:
+
+env:
+  FORCE_COLOR: 1
+
+jobs:
+  evals:
+    name: Run Eval Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile --child-concurrency=10
+      - name: Create .dev.vars for autofix app
+        run: |
+          cat << EOF > apps/autofix/.dev.vars
+          AI_GATEWAY_ACCOUNT_ID=${{ vars.AI_GATEWAY_ACCOUNT_ID }}
+          AI_GATEWAY_NAME=${{ vars.AI_GATEWAY_NAME }}
+          AI_GATEWAY_API_KEY=${{ secrets.AI_GATEWAY_API_KEY }}
+          EOF
+      - name: Run Eval Tests
+        run: pnpm test:ci:evals

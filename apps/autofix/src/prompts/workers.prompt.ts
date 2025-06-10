@@ -1,4 +1,5 @@
-import { fmt } from '../format'
+import { fmt } from '@repo/format'
+
 import { createMigrationGuidelines } from './pages.prompt'
 
 import type { BuildResponse } from '../workersBuilds'

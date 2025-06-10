@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 set -eu
 
-vitest run --silent --testTimeout=15000
+vitest run --silent --testTimeout=15000 "$@"

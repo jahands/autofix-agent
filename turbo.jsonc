@@ -56,8 +56,17 @@
 				"//#check:lint:all",
 				"//#test:ci",
 				"test:ci",
+				"//#test:ci:evals",
 				"topo"
 			],
+			"outputLogs": "new-only"
+		},
+		"//#test:ci:evals": {
+			"env": ["AI_GATEWAY_ACCOUNT_ID", "AI_GATEWAY_NAME", "AI_GATEWAY_API_KEY"],
+			"outputLogs": "new-only"
+		},
+		"test:evals": {
+			"env": ["AI_GATEWAY_ACCOUNT_ID", "AI_GATEWAY_NAME", "AI_GATEWAY_API_KEY"],
 			"outputLogs": "new-only"
 		},
 		"//#check:deps": {

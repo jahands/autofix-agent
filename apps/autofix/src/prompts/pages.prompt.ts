@@ -1,4 +1,4 @@
-import { fmt } from '../format'
+import { fmt } from '@repo/format'
 
 import type { BuildResponse } from '../workersBuilds'
 

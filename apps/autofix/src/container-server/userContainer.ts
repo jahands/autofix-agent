@@ -18,6 +18,11 @@ const ExecResult = z.object({
 	stderr: z.string(),
 })
 
+/**
+ * Container operations used by AutofixAgent tools.
+ */
+export type UserContainerTools = Pick<UserContainer, 'execCommand' | 'writeFile' | 'readFile'>
+
 export class UserContainer extends Container<Env> {
 	defaultPort = OPEN_CONTAINER_PORT
 	sleepAfter = '5m'
