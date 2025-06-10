@@ -14,7 +14,8 @@
 		"fix:workers-types": "run-wrangler-types",
 		"start:container": "tsx src/container/sandbox.container.app.ts",
 		"tail": "autofix tail",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:evals": "vitest -c vitest.config.evals.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "1.2.11",
@@ -25,6 +26,8 @@
 		"@hono/standard-validator": "0.1.2",
 		"@hono/zod-validator": "0.5.0",
 		"@octokit/rest": "21.1.1",
+		"@repo/eval-tools": "workspace:*",
+		"@repo/format": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/sandbox-container": "workspace:*",
 		"agents": "0.0.87",
@@ -49,7 +52,9 @@
 		"@repo/typescript-config": "workspace:*",
 		"@types/mock-fs": "4.13.4",
 		"@types/node": "22.15.27",
-		"vitest": "3.1.4",
+		"@vitest/ui": "3.2.3",
+		"vitest": "3.2.3",
+		"vitest-evals": "0.3.0",
 		"wrangler": "4.16.1"
 	}
 }

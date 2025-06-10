@@ -49,6 +49,10 @@ test *flags:
   pnpm vitest {{flags}}
 
 [no-cd]
+test-evals *flags:
+  pnpm test:evals {{flags}}
+
+[no-cd]
 build *flags:
   pnpm turbo build {{flags}}
 

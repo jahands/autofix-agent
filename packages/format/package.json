@@ -1,0 +1,23 @@
+{
+	"name": "@repo/format",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/format.ts"
+	},
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc"
+	},
+	"dependencies": {
+		"@fast-csv/format": "5.0.2",
+		"vitest": "3.2.3"
+	},
+	"devDependencies": {
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*"
+	}
+}

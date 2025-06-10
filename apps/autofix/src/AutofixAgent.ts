@@ -8,15 +8,15 @@ import { logger } from './logger'
 import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WorkersBuildsClient, type BuildResponse } from './workersBuilds'
-import { experimental_createMCPClient, tool, generateText } from 'ai'
+import { experimental_createMCPClient, generateText } from 'ai'
 import { GoogleModels } from './ai-models'
-import { fmt } from './format'
 import { GitHubClient } from './github'
 import { createDetectionSystemPrompt, createDetectionUserPrompt } from './prompts/pages.prompt'
 import {
 	createFixGenerationSystemPrompt,
 	createFixGenerationUserPrompt,
 } from './prompts/workers.prompt'
+import { createAutofixAgentTools } from './autofix.tools'
 
 const AgentActions = {
 	initialize_container: { description: 'Initialize the container for the repository.' },
@@ -242,100 +242,10 @@ class AutofixAgent extends Agent<Env, AgentState> {
 			},
 		}).then((client) => client.tools())
 
+		const autofixTools = createAutofixAgentTools(this.getContainer(), this.buildWorkDir())
 		const tools = {
 			...docsTools,
-			listContainerFiles: tool({
-				description: 'List files in the container. This requires no parameters',
-				parameters: z3.object({}),
-				execute: async () => {
-					const files = await this.getContainer().execCommand({
-						command: 'find',
-						args: ['.'],
-						cwd: this.buildWorkDir(),
-					})
-					return files.stdout
-				},
-			}),
-			createFile: tool({
-				description: 'Create a file in the container with the given path and contents',
-				parameters: z3.object({ filePath: z3.string(), contents: z3.string() }),
-				execute: async ({ filePath, contents }) => {
-					await this.getContainer().writeFile({ filePath, cwd: this.buildWorkDir(), contents })
-				},
-			}),
-			getFileContents: tool({
-				description:
-					'Get the contents of a file in the container. Can read any file given the path.',
-				parameters: z3.object({ filePath: z3.string() }),
-				execute: async ({ filePath }) => {
-					return this.getContainer().readFile({
-						cwd: this.buildWorkDir(),
-						filePath,
-					})
-				},
-			}),
-			deleteFile: tool({
-				description: 'Delete a file in the container with the given path',
-				parameters: z3.object({ filePath: z3.string() }),
-				execute: async ({ filePath }) => {
-					await this.getContainer().execCommand({
-						command: 'rm',
-						args: ['-f', filePath],
-						cwd: this.buildWorkDir(),
-					})
-					return { success: true, message: `File ${filePath} deleted successfully` }
-				},
-			}),
-			installDependencies: tool({
-				description: fmt.trim(`
-					Install project dependencies using the appropriate package manager.
-					Use the correct package manager based on lock files (npm, yarn, pnpm, or bun).
-
-					Returns success status and any error details if the command fails.
-				`),
-				parameters: z3.object({ installCommand: z3.string() }),
-				execute: async ({ installCommand }) => {
-					try {
-						await this.getContainer().execCommand({
-							command: 'bash',
-							args: ['-c', installCommand],
-							cwd: this.buildWorkDir(),
-						})
-						return JSON.stringify({ success: true, message: 'Dependencies installed successfully' })
-					} catch (error) {
-						return JSON.stringify({
-							success: false,
-							error: error instanceof Error ? error.message : String(error),
-							command: installCommand,
-						})
-					}
-				},
-			}),
-			buildProject: tool({
-				description: fmt.trim(`
-					Builds the project using the specified command.
-					Dependencies should be installed first using the installDependencies tool.
-
-					Returns success status and any error details if the build fails.
-				`),
-				parameters: z3.object({ buildCommand: z3.string() }),
-				execute: async ({ buildCommand }) => {
-					try {
-						await this.getContainer().execCommand({
-							command: 'bash',
-							args: ['-c', buildCommand],
-							cwd: this.buildWorkDir(),
-						})
-						return JSON.stringify({ success: true, message: 'Project built successfully' })
-					} catch (error) {
-						return JSON.stringify({
-							success: false,
-							error: error instanceof Error ? error.message : String(error),
-							command: buildCommand,
-						})
-					}
-				},
-			}),
+			...autofixTools,
 		}
 
 		const workersBuilds = new WorkersBuildsClient({

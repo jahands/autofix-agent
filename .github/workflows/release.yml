@@ -16,12 +16,12 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
       - uses: pnpm/action-setup@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'pnpm'
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile --child-concurrency=10
       - name: Check
@@ -30,6 +30,8 @@ jobs:
         run: pnpm test:ci
       - name: Deploy
         run: pnpm turbo deploy
+        # Disabled for now - nothing to deploy
+        if: false
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -52,7 +54,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'pnpm'
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile --child-concurrency=10 --filter .
       - name: Create Release PR
