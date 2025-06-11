@@ -1,5 +1,6 @@
 import { fmt } from '@repo/format'
 
+import { AutofixTools as t } from '../autofix.tools'
 import { createMigrationGuidelines } from './pages.prompt'
 
 import type { BuildResponse } from '../workersBuilds'
@@ -32,9 +33,9 @@ const createBaseSystemPrompt = () =>
 		- Focus on the specific build failure, not general improvements
 		- Make minimal changes required to fix the issue
 		- Verify fixes by running builds after changes
-		- Install dependencies first using the installDependencies tool before attempting to build
+		- Install dependencies first using the ${t.installDependencies} tool before attempting to build
 		- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
-		- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
+		- After making changes and installing dependencies, run ${t.buildProject} to verify the project can be built successfully
 		- The command must always include 'npx wrangler build' to ensure proper Workers deployment
 	`)
 
@@ -47,9 +48,9 @@ const createCoreGuidelines = () =>
 		- This project will be deployed as a Cloudflare Worker (with static assets support if needed)
 		- You have tools available to you, call them as many times as you need
 		- You MUST update the files to fix the issue
-		- IMPORTANT: Always install dependencies first using the installDependencies tool before attempting to build
+		- IMPORTANT: Always install dependencies first using the ${t.installDependencies} tool before attempting to build
 		- Detect the correct package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb)
-		- After making changes and installing dependencies, run buildProject to verify the project can be built successfully
+		- After making changes and installing dependencies, run ${t.buildProject} to verify the project can be built successfully
 		- The command must always include 'npx wrangler build' to ensure proper Workers deployment
 		- CRITICAL DEPLOYMENT RULE: Use 'wrangler deploy' for deployment, NEVER 'wrangler pages deploy'
 		- NEVER suggest or use any Pages-specific deployment commands (wrangler pages deploy, etc.)

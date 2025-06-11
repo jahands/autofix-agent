@@ -4,6 +4,7 @@ import { describeEval } from 'vitest-evals'
 import { checkFactuality, eachModel, runTask } from '@repo/eval-tools/src'
 import { fmt } from '@repo/format'
 
+import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
@@ -12,14 +13,14 @@ eachModel('$modelName', ({ model }) => {
 			{
 				input: 'Build the project using npm run build',
 				expected: fmt.oneLine(`
-					The buildProject tool should be called with buildCommand="npm run build"
+					The ${t.buildProject} tool should be called with buildCommand="npm run build"
 					to compile the project
 				`),
 			},
 			{
 				input: 'Run the build script with pnpm',
 				expected: fmt.oneLine(`
-					The buildProject tool should be called with buildCommand="pnpm build"
+					The ${t.buildProject} tool should be called with buildCommand="pnpm build"
 					or "pnpm run build" to build the project
 				`),
 			},
@@ -28,8 +29,8 @@ eachModel('$modelName', ({ model }) => {
 			const tools = await initializeClient()
 			const { promptOutput, toolCalls } = await runTask(tools, model, input)
 
-			const toolCall = toolCalls.find((call) => call.toolName === 'buildProject')
-			expect(toolCall, 'Tool buildProject was not called').toBeDefined()
+			const toolCall = toolCalls.find((call) => call.toolName === t.buildProject)
+			expect(toolCall, `Tool ${t.buildProject} was not called`).toBeDefined()
 			expect(toolCall?.args).toHaveProperty('buildCommand')
 
 			// Verify the command contains a build instruction

@@ -4,6 +4,7 @@ import { describeEval } from 'vitest-evals'
 import { checkFactuality, eachModel, runTask } from '@repo/eval-tools/src'
 import { fmt } from '@repo/format'
 
+import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
@@ -12,9 +13,9 @@ eachModel('$modelName', ({ model }) => {
 			{
 				input: 'List the project files, install dependencies, and then build the project',
 				expected: fmt.oneLine(`
-					The listContainerFiles tool should be called first to see project structure,
-					then installDependencies should be called to install packages,
-					followed by buildProject to compile the code
+					The ${t.listContainerFiles} tool should be called first to see project structure,
+					then ${t.installDependencies} should be called to install packages,
+					followed by ${t.buildProject} to compile the code
 				`),
 			},
 		],
@@ -23,13 +24,13 @@ eachModel('$modelName', ({ model }) => {
 			const { promptOutput, toolCalls } = await runTask(tools, model, input)
 
 			// Verify the workflow tools were called
-			const listCall = toolCalls.find((call) => call.toolName === 'listContainerFiles')
-			const installCall = toolCalls.find((call) => call.toolName === 'installDependencies')
-			const buildCall = toolCalls.find((call) => call.toolName === 'buildProject')
+			const listCall = toolCalls.find((call) => call.toolName === t.listContainerFiles)
+			const installCall = toolCalls.find((call) => call.toolName === t.installDependencies)
+			const buildCall = toolCalls.find((call) => call.toolName === t.buildProject)
 
-			expect(listCall, 'Tool listContainerFiles was not called').toBeDefined()
-			expect(installCall, 'Tool installDependencies was not called').toBeDefined()
-			expect(buildCall, 'Tool buildProject was not called').toBeDefined()
+			expect(listCall, `Tool ${t.listContainerFiles} was not called`).toBeDefined()
+			expect(installCall, `Tool ${t.installDependencies} was not called`).toBeDefined()
+			expect(buildCall, `Tool ${t.buildProject} was not called`).toBeDefined()
 
 			return promptOutput
 		},
