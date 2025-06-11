@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Create File Tool', {
+	describeEval(`tool: ${t.createFile}`, {
 		data: async () => [
 			{
 				input: 'Create a file called hello.txt with the content "Hello World"',

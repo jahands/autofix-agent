@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Create and Read File Workflow', {
+	describeEval(`workflow: ${t.createFile} + ${t.getFileContents}`, {
 		data: async () => [
 			{
 				input: 'Create a configuration file config.json with some settings and then read it back',

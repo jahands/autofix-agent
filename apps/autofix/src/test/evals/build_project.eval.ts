@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Build Project Tool', {
+	describeEval(`tool: ${t.buildProject}`, {
 		data: async () => [
 			{
 				input: 'Build the project using npm run build',

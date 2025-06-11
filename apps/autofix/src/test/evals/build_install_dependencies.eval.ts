@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Install Dependencies Tool', {
+	describeEval(`tool: ${t.installDependencies}`, {
 		data: async () => [
 			{
 				input: 'Install the project dependencies using npm',

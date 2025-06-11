@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('File Cleanup Workflow', {
+	describeEval(`workflow: ${t.createFile} + ${t.deleteFile}`, {
 		data: async () => [
 			{
 				input: 'Create a temporary file temp.log, write some content to it, then delete it',

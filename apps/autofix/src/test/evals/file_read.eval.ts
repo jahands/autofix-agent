@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Get File Contents Tool', {
+	describeEval(`tool: ${t.getFileContents}`, {
 		data: async () => [
 			{
 				input: 'Read the contents of package.json',
