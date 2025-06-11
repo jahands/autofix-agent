@@ -91,7 +91,7 @@ function getWorkersAiModel(modelName: AiTextGenerationModels) {
 }
 
 function getFireworksModel(modelName: string) {
-	const fireworksApiKey = (env as any).FIREWORKS_AI_API_KEY
+	const fireworksApiKey = env.FIREWORKS_AI_API_KEY
 	if (!fireworksApiKey) {
 		throw new Error('No Fireworks AI API key provided!')
 	}
@@ -105,8 +105,23 @@ function getFireworksModel(modelName: string) {
 	return { modelName, model, ai }
 }
 
+function getGroqModel(modelName: string) {
+	const groqApiKey = env.GROQ_API_KEY
+	if (!groqApiKey) {
+		throw new Error('No Groq API key provided!')
+	}
+
+	const ai = createOpenAI({
+		apiKey: groqApiKey,
+		baseURL: 'https://api.groq.com/openai/v1',
+	})
+
+	const model = ai(modelName)
+	return { modelName, model, ai }
+}
+
 export const eachModel = describe.each([
-	getFireworksModel('accounts/fireworks/models/qwen3-30b-a3b'), // Using Fireworks AI Qwen 3 for consistency with production
+	getGroqModel('meta-llama/llama-4-scout-17b-16e-instruct'), // Using Groq Llama 4 Scout for evals
 	// getOpenAiModel('gpt-4o'), // Switched to Fireworks AI now that billing is fixed
 	// getOpenAiModel('gpt-4o-mini'), // TODO: enable later
 	// getAnthropicModel('claude-3-5-sonnet-20241022'), TODO: The evals pass with anthropic, but our rate limit is so low with AI wholesaling that we can't use it in CI because it's impossible to get a complete run with the current limits
