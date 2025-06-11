@@ -9,7 +9,7 @@ import type { AgentContext } from 'agents'
 import type { Env } from './autofix.context'
 import { WorkersBuildsClient, type BuildResponse } from './workersBuilds'
 import { experimental_createMCPClient, generateText } from 'ai'
-import { WorkersAIModels } from './ai-models'
+import { FireworksModels } from './ai-models'
 import { GitHubClient } from './github'
 import { createDetectionSystemPrompt, createDetectionUserPrompt } from './prompts/pages.prompt'
 import {
@@ -287,7 +287,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		const userPrompt = createDetectionUserPrompt({ metadata, logs })
 
 		const res = await generateText({
-			model: WorkersAIModels.llama4(),
+			model: FireworksModels.qwen3(),
 			maxTokens: 20_000,
 			maxSteps: 10,
 			system: systemPrompt,
@@ -332,7 +332,7 @@ class AutofixAgent extends Agent<Env, AgentState> {
 		})
 
 		return generateText({
-			model: WorkersAIModels.llama4(),
+			model: FireworksModels.qwen3(),
 			maxTokens: 50_000,
 			maxSteps: 20,
 			system: systemPrompt,

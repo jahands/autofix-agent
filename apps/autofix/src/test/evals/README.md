@@ -10,7 +10,7 @@ These evals test whether AI models can correctly use AutofixAgent tools to compl
 2. **Argument Passing** - Models provide appropriate arguments to tools
 3. **Response Quality** - Model responses are factually correct and helpful
 
-**Note**: The evals use GPT-4o for reliable tool calling, while the production AutofixAgent uses Workers AI (llama-4-scout-17b-16e-instruct) for cost efficiency and integration benefits.
+**Note**: The evals use GPT-4o for reliable tool calling, while the production AutofixAgent uses Fireworks AI (Qwen 3) for high performance and cost efficiency.
 
 ## Setup
 

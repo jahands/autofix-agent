@@ -12,6 +12,8 @@ export type Env = SharedHonoEnv & {
 	AI_GATEWAY_NAME: string
 	AI_GATEWAY_API_KEY: string
 
+	FIREWORKS_AI_API_KEY: string
+
 	DEMO_CLOUDFLARE_ACCOUNT_TAG: string
 	DEMO_CLOUDFLARE_API_TOKEN: string
 

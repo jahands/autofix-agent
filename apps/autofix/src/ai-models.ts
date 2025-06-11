@@ -36,3 +36,12 @@ export const GoogleModels = {
 	GeminiPro: () => aiGateway([google('gemini-2.5-pro-preview-03-25')]),
 	GeminiFlash: () => aiGateway([google('gemini-2.0-flash')]),
 }
+
+// Fireworks AI Models (using OpenAI-compatible endpoint)
+const fireworks = createOpenAI({
+	apiKey: env.FIREWORKS_AI_API_KEY,
+	baseURL: 'https://api.fireworks.ai/inference/v1',
+})
+export const FireworksModels = {
+	qwen3: () => fireworks('accounts/fireworks/models/qwen3-30b-a3b'),
+}
