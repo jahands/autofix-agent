@@ -5,6 +5,16 @@ import { fmt } from '@repo/format'
 
 import type { UserContainerTools } from './container-server/userContainer'
 
+/** Names of tools to be used in the agent's prompt. */
+export const AutofixTools = {
+	listContainerFiles: 'listContainerFiles',
+	createFile: 'createFile',
+	getFileContents: 'getFileContents',
+	deleteFile: 'deleteFile',
+	installDependencies: 'installDependencies',
+	buildProject: 'buildProject',
+} as const satisfies Record<string, string>
+
 export function createAutofixAgentTools(container: UserContainerTools, buildWorkDir: string) {
 	return {
 		listContainerFiles: tool({
@@ -82,7 +92,7 @@ export function createAutofixAgentTools(container: UserContainerTools, buildWork
 		buildProject: tool({
 			description: fmt.trim(`
 				Builds the project using the specified command.
-				Dependencies should be installed first using the installDependencies tool.
+				Dependencies should be installed first using the ${AutofixTools.installDependencies} tool.
 
 				Returns success status and any error details if the build fails.
 			`),

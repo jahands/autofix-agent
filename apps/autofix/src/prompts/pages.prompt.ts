@@ -1,5 +1,7 @@
 import { fmt } from '@repo/format'
 
+import { AutofixTools as t } from '../autofix.tools'
+
 import type { BuildResponse } from '../workersBuilds'
 
 /**
@@ -35,7 +37,7 @@ export const createDetectionSystemPrompt = () =>
 			- Package.json and build scripts for Pages-specific patterns
 		3. Look for SPECIFIC Cloudflare Pages-related errors and configuration, not just the word "Pages"
 		4. If you find clear evidence of Cloudflare Pages usage, you can conclude without file analysis
-		5. Only use tools like listContainerFiles() and getFileContents() if you need additional information
+		5. Only use tools like ${t.listContainerFiles}() and ${t.getFileContents}() if you need additional information
 		6. Be efficient - don't list files unnecessarily
 
 		Specific Cloudflare Pages Indicators to Look For:
