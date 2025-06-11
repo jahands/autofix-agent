@@ -1,5 +1,5 @@
 ---
-'autofix-agent': minor
+'@repo/autofix': minor
 ---
 
 feat: scaffold autofix Worker
