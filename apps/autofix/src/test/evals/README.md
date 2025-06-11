@@ -10,6 +10,8 @@ These evals test whether AI models can correctly use AutofixAgent tools to compl
 2. **Argument Passing** - Models provide appropriate arguments to tools
 3. **Response Quality** - Model responses are factually correct and helpful
 
+**Note**: The evals use GPT-4o for reliable tool calling, while the production AutofixAgent uses Workers AI (llama-4-scout-17b-16e-instruct) for cost efficiency and integration benefits.
+
 ## Setup
 
 These evals use Cloudflare AI Gateway for model access and run in Cloudflare Workers runtime via `vitest-pool-workers`.
