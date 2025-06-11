@@ -1,3 +1,5 @@
+import { describe, expect, test } from 'vitest'
+
 import { AutofixTools } from './autofix.tools'
 
 import type { createAutofixAgentTools } from './autofix.tools'
@@ -12,3 +14,9 @@ const _assertValuesMatchKeys: AssertValuesMatchKeys<typeof AutofixTools> = Autof
 type AssertAllToolsReturned<T extends Record<keyof typeof AutofixTools, any>> = T
 const _assertAllToolsReturned: AssertAllToolsReturned<ReturnType<typeof createAutofixAgentTools>> =
 	{} as ReturnType<typeof createAutofixAgentTools>
+
+describe('autofix.tools', () => {
+	test('types-only test file', () => {
+		expect(true).toBe(true)
+	})
+})

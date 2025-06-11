@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Project Setup Workflow', {
+	describeEval(`workflow: ${t.listContainerFiles} + ${t.installDependencies} + ${t.buildProject}`, {
 		data: async () => [
 			{
 				input: 'List the project files, install dependencies, and then build the project',

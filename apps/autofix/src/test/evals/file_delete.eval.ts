@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Delete File Tool', {
+	describeEval(`tool: ${t.deleteFile}`, {
 		data: async () => [
 			{
 				input: 'Delete the temporary file temp.txt',

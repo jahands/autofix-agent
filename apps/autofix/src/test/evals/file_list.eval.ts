@@ -8,7 +8,7 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('List Container Files Tool', {
+	describeEval(`tool: ${t.listContainerFiles}`, {
 		data: async () => [
 			{
 				input: 'List all files in the project directory',
