@@ -15,9 +15,9 @@ The evaluation system tests three key aspects:
 ### Core Components
 
 - **[`@repo/eval-tools`](https://github.com/jahands/autofix-agent/tree/main/packages/eval-tools)** - Shared evaluation utilities package
-- **[`vitest-evals`](https://www.npmjs.com/package/vitest-evals)** - Framework for AI-powered evaluations
+- **[`vitest-evals`](https://www.npmjs.com/package/vitest-evals)** - Evals framework for Vitest (built by Sentry)
 - **[`@cloudflare/vitest-pool-workers`](https://www.npmjs.com/package/@cloudflare/vitest-pool-workers)** - Runs tests in Cloudflare Workers runtime
-- **[Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/)** - Centralized API management for multiple AI providers
+- **[Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/)** - Proxies all requests to AI providers like Gemini
 
 ### Key Files
 
