@@ -8,21 +8,21 @@ AI-powered evaluation utilities for testing tools with multiple models via Cloud
 import { checkFactuality, eachModel, runTask } from '@repo/eval-tools/src'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval('Tool Test', {
-		data: async () => [
-			{
-				input: 'Test input',
-				expected: 'Tool should be called',
-			},
-		],
-		task: async (input: string) => {
-			const { promptOutput, toolCalls } = await runTask(tools, model, input)
-			expect(toolCalls.find((call) => call.toolName === 'myTool')).toBeDefined()
-			return promptOutput
-		},
-		scorers: [checkFactuality],
-		threshold: 0.4,
-	})
+  describeEval('Tool Test', {
+    data: async () => [
+      {
+        input: 'Test input',
+        expected: 'Tool should be called',
+      },
+    ],
+    task: async (input: string) => {
+      const { promptOutput, toolCalls } = await runTask(tools, model, input)
+      expect(toolCalls.find((call) => call.toolName === 'myTool')).toBeDefined()
+      return promptOutput
+    },
+    scorers: [checkFactuality],
+    threshold: 0.4,
+  })
 })
 ```
 

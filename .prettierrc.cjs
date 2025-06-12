@@ -41,6 +41,12 @@ const config = {
 			},
 		},
 		{
+			files: '*.md',
+			options: {
+				useTabs: false,
+			},
+		},
+		{
 			files: 'Justfile',
 			options: {
 				useTabs: false,
