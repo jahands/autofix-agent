@@ -93,31 +93,31 @@ import { AutofixTools as t } from '../../autofix.tools'
 import { initializeClient } from './client'
 
 eachModel('$modelName', ({ model }) => {
-	describeEval(`tool: ${t.yourToolName}`, {
-		data: async () => [
-			{
-				input: 'User request description',
-				expected: fmt.oneLine(`
-					The ${t.yourToolName} tool should be called with specific arguments
-					and produce expected behavior
-				`),
-			},
-		],
-		task: async (input: string) => {
-			const tools = await initializeClient()
-			const { promptOutput, toolCalls } = await runTask(tools, model, input)
+  describeEval(`tool: ${t.yourToolName}`, {
+    data: async () => [
+      {
+        input: 'User request description',
+        expected: fmt.oneLine(`
+          The ${t.yourToolName} tool should be called with specific arguments
+          and produce expected behavior
+        `),
+      },
+    ],
+    task: async (input: string) => {
+      const tools = await initializeClient()
+      const { promptOutput, toolCalls } = await runTask(tools, model, input)
 
-			// Verify correct tool was called
-			const toolCall = toolCalls.find((call) => call.toolName === t.yourToolName)
-			expect(toolCall).toBeDefined()
-			expect(toolCall?.args).toHaveProperty('expectedArgument')
+      // Verify correct tool was called
+      const toolCall = toolCalls.find((call) => call.toolName === t.yourToolName)
+      expect(toolCall).toBeDefined()
+      expect(toolCall?.args).toHaveProperty('expectedArgument')
 
-			return promptOutput
-		},
-		scorers: [checkFactuality],
-		threshold: 1,
-		timeout: 60000,
-	})
+      return promptOutput
+    },
+    scorers: [checkFactuality],
+    threshold: 1,
+    timeout: 60000,
+  })
 })
 ```
 
@@ -126,33 +126,33 @@ eachModel('$modelName', ({ model }) => {
 ```typescript
 // Test workflows that require multiple tool calls
 describeEval(`workflow: ${t.createFile} + ${t.getFileContents}`, {
-	data: async () => [
-		{
-			input: 'Create a config file and then read it back',
-			expected: fmt.oneLine(`
-				The ${t.createFile} tool should be called first,
-				then ${t.getFileContents} should be called to read the file
-			`),
-		},
-	],
-	task: async (input: string) => {
-		const tools = await initializeClient()
-		const { promptOutput, toolCalls } = await runTask(tools, model, input)
+  data: async () => [
+    {
+      input: 'Create a config file and then read it back',
+      expected: fmt.oneLine(`
+        The ${t.createFile} tool should be called first,
+        then ${t.getFileContents} should be called to read the file
+      `),
+    },
+  ],
+  task: async (input: string) => {
+    const tools = await initializeClient()
+    const { promptOutput, toolCalls } = await runTask(tools, model, input)
 
-		// Verify both tools were called
-		const createCall = toolCalls.find((call) => call.toolName === t.createFile)
-		const readCall = toolCalls.find((call) => call.toolName === t.getFileContents)
+    // Verify both tools were called
+    const createCall = toolCalls.find((call) => call.toolName === t.createFile)
+    const readCall = toolCalls.find((call) => call.toolName === t.getFileContents)
 
-		expect(createCall).toBeDefined()
-		expect(readCall).toBeDefined()
+    expect(createCall).toBeDefined()
+    expect(readCall).toBeDefined()
 
-		// Verify they work on the same file
-		expect(createCall?.args.filePath).toBe(readCall?.args.filePath)
+    // Verify they work on the same file
+    expect(createCall?.args.filePath).toBe(readCall?.args.filePath)
 
-		return promptOutput
-	},
-	scorers: [checkFactuality],
-	threshold: 1,
+    return promptOutput
+  },
+  scorers: [checkFactuality],
+  threshold: 1,
 })
 ```
 
@@ -166,20 +166,20 @@ Each app needs a `vitest.config.evals.ts` file:
 import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config'
 
 export default defineWorkersConfig({
-	test: {
-		include: ['**/*.eval.?(c|m)[jt]s?(x)'],
-		poolOptions: {
-			workers: {
-				isolatedStorage: true,
-				wrangler: { configPath: './wrangler.jsonc' },
-				miniflare: {
-					bindings: {
-						ENVIRONMENT: 'test',
-					},
-				},
-			},
-		},
-	},
+  test: {
+    include: ['**/*.eval.?(c|m)[jt]s?(x)'],
+    poolOptions: {
+      workers: {
+        isolatedStorage: true,
+        wrangler: { configPath: './wrangler.jsonc' },
+        miniflare: {
+          bindings: {
+            ENVIRONMENT: 'test',
+          },
+        },
+      },
+    },
+  },
 })
 ```
 
@@ -222,21 +222,21 @@ The [`client.ts`](https://github.com/jahands/autofix-agent/blob/main/apps/autofi
 
 ```typescript
 const mockContainer: UserContainerTools = {
-	async execCommand({ command, args }) {
-		// Mock command execution with pattern matching
-		return match({ command, args })
-			.with({ command: 'find' }, () => ({ status: 0, stdout: '...' }))
-			.otherwise(() => ({ status: 1, stderr: 'command not found' }))
-	},
-	async writeFile({ filePath, contents }) {
-		// Mock file writing
-	},
-	async readFile({ filePath }) {
-		// Mock file reading with realistic content
-		return match(filePath)
-			.with('package.json', () => JSON.stringify({ name: 'test-project' }))
-			.otherwise((path) => `// Mock content for ${path}`)
-	},
+  async execCommand({ command, args }) {
+    // Mock command execution with pattern matching
+    return match({ command, args })
+      .with({ command: 'find' }, () => ({ status: 0, stdout: '...' }))
+      .otherwise(() => ({ status: 1, stderr: 'command not found' }))
+  },
+  async writeFile({ filePath, contents }) {
+    // Mock file writing
+  },
+  async readFile({ filePath }) {
+    // Mock file reading with realistic content
+    return match(filePath)
+      .with('package.json', () => JSON.stringify({ name: 'test-project' }))
+      .otherwise((path) => `// Mock content for ${path}`)
+  },
 }
 ```
 
@@ -267,11 +267,11 @@ Create custom scoring functions in [`scorers.ts`](https://github.com/jahands/aut
 
 ```typescript
 export const customScorer: ScoreFn = async ({ input, expected, output }) => {
-	// Custom scoring logic
-	return {
-		score: 0.8,
-		metadata: { reason: 'Custom evaluation result' },
-	}
+  // Custom scoring logic
+  return {
+    score: 0.8,
+    metadata: { reason: 'Custom evaluation result' },
+  }
 }
 ```
 
