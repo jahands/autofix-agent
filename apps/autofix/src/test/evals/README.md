@@ -78,26 +78,26 @@ Each eval test is in its own file for optimal parallelization:
 
    ```typescript
    eachModel('$modelName', ({ model }) => {
-   	describeEval('Your Tool Name', {
-   		data: async () => [
-   			{
-   				input: 'User request description',
-   				expected: 'Expected behavior including tool calls',
-   			},
-   		],
-   		task: async (input: string) => {
-   			const tools = await initializeClient()
-   			const { promptOutput, toolCalls } = await runTask(tools, model, input)
+     describeEval('Your Tool Name', {
+       data: async () => [
+         {
+           input: 'User request description',
+           expected: 'Expected behavior including tool calls',
+         },
+       ],
+       task: async (input: string) => {
+         const tools = await initializeClient()
+         const { promptOutput, toolCalls } = await runTask(tools, model, input)
 
-   			// Verify correct tool was called
-   			const toolCall = toolCalls.find((call) => call.toolName === 'expectedToolName')
-   			expect(toolCall).toBeDefined()
+         // Verify correct tool was called
+         const toolCall = toolCalls.find((call) => call.toolName === 'expectedToolName')
+         expect(toolCall).toBeDefined()
 
-   			return promptOutput
-   		},
-   		scorers: [checkFactuality],
-   		threshold: 1,
-   		timeout: 60000,
-   	})
+         return promptOutput
+       },
+       scorers: [checkFactuality],
+       threshold: 1,
+       timeout: 60000,
+     })
    })
    ```
