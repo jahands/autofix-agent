@@ -260,7 +260,6 @@ See the [`apps/autofix/src/test/evals/`](https://github.com/jahands/autofix-agen
 
 1. Update [`test-models.ts`](https://github.com/jahands/autofix-agent/blob/main/packages/eval-tools/src/test-models.ts) with new model configuration
 2. Add model to the `eachModel` array
-3. Configure API keys in AI Gateway
 
 ### Custom Scorers
 
