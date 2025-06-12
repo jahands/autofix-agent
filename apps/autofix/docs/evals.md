@@ -187,10 +187,10 @@ export default defineWorkersConfig({
 
 Models are configured in [`packages/eval-tools/src/test-models.ts`](https://github.com/jahands/autofix-agent/blob/main/packages/eval-tools/src/test-models.ts). Currently using:
 
-- **Workers AI**: `@cf/meta/llama-4-scout-17b-16e-instruct` (primary)
+- **OpenAI**: `gpt-4o` (primary)
 - **OpenAI**: `gpt-4o` (for factuality scoring)
 
-Other models (Anthropic Claude, Google Gemini) are available but commented out due to rate limits or consistency issues.
+Other models (Claude, Gemini, Llama 4, etc.) are available, but currently disabled at the moment to speed up tests.
 
 ## Scoring System
 
