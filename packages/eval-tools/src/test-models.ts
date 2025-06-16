@@ -98,5 +98,5 @@ export const eachModel = describe.each([
 	// llama 3 is somewhat inconsistent
 	//getWorkersAiModel("@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 	// Currently llama 4 is having issues with tool calling
-	//getWorkersAiModel("@cf/meta/llama-4-scout-17b-16e-instruct")
+	// getWorkersAiModel('@cf/meta/llama-4-scout-17b-16e-instruct' as AiTextGenerationModels),
 ])
