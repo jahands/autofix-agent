@@ -1,5 +1,16 @@
 # @repo/tools
 
+## 0.4.0
+
+### Minor Changes
+
+- 3a3fdeb: feat: add autofix fix-build command
+
+### Patch Changes
+
+- 020835f: chore: update deps
+- 0e220a8: chore: upgrade to eslint 9
+
 ## 0.3.0
 
 ### Minor Changes

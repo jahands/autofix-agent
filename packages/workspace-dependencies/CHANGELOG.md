@@ -1,5 +1,16 @@
 # @repo/workspace-dependencies
 
+## 0.1.3
+
+### Patch Changes
+
+- 020835f: chore: update deps
+- 0e220a8: chore: upgrade to eslint 9
+- Updated dependencies [020835f]
+- Updated dependencies [0e220a8]
+- Updated dependencies [3a3fdeb]
+  - @repo/tools@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes
